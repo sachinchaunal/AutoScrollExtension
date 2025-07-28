@@ -94,6 +94,28 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/cleanup', cleanupRoutes);
 app.use('/api/upi-mandates', upiMandateRoutes);
 
+// Serve test dashboard with environment configuration
+app.get('/test-dashboard', (req, res) => {
+    try {
+        const path = require('path');
+        const fs = require('fs');
+        const dashboardPath = path.join(__dirname, 'test-dashboard.html');
+        let htmlContent = fs.readFileSync(dashboardPath, 'utf8');
+        
+        // Replace template variables with actual environment values
+        htmlContent = htmlContent.replace(/{{API_BASE_URL}}/g, CONFIG.apiBaseUrl);
+        htmlContent = htmlContent.replace(/{{NODE_ENV}}/g, CONFIG.nodeEnv);
+        
+        res.send(htmlContent);
+    } catch (error) {
+        console.error('Error serving test dashboard:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error loading test dashboard'
+        });
+    }
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.status(200).json({

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AutoScroll Backend - UPI Mandate Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #007bff;
+        }
+        .test-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        input, button {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #b6d4db;
+            color: #0c5460;
+        }
+        .qr-code {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .qr-code img {
+            max-width: 200px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 10px;
+            background: white;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+        .status.online {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 AutoScroll Backend Test Dashboard</h1>
+        
+        <!-- Server Status -->
+        <div class="test-section">
+            <h3>📊 Server Status</h3>
+            <div id="serverStatus" class="status">Checking...</div>
+            <button onclick="checkServerStatus()">🔄 Refresh Status</button>
+        </div>
+
+        <!-- API Configuration -->
+        <div class="test-section">
+            <h3>⚙️ API Configuration</h3>
+            <div class="info">
+                <strong>Backend URL:</strong> <span id="apiUrl">{{API_BASE_URL}}</span><br>
+                <strong>Environment:</strong> {{NODE_ENV}}<br>
+                <strong>Test Mode:</strong> Razorpay Test Keys
+            </div>
+        </div>
+
+        <!-- UPI Mandate Test -->
+        <div class="test-section">
+            <h3>💳 UPI Mandate Creation Test</h3>
+            <div class="test-form">
+                <input type="text" id="userUpiId" placeholder="Enter UPI ID (e.g., test@paytm)" value="test@paytm">
+                <input type="number" id="amount" placeholder="Amount (₹)" value="9" min="1">
+                <button onclick="createUpiMandate()">🎯 Create UPI Mandate</button>
+            </div>
+            <div id="mandateResult"></div>
+        </div>
+
+        <!-- Device Verification Test -->
+        <div class="test-section">
+            <h3>🔐 Device Verification Test</h3>
+            <div class="test-form">
+                <button onclick="testDeviceVerification()">🛡️ Test Device Verification</button>
+            </div>
+            <div id="deviceResult"></div>
+        </div>
+
+        <!-- Webhook Test -->
+        <div class="test-section">
+            <h3>🔗 Webhook Information</h3>
+            <div class="info">
+                <strong>Webhook URL:</strong> {{API_BASE_URL}}/api/upi-mandates/webhook<br>
+                <strong>Status:</strong> <span id="webhookStatus">Not tested</span><br>
+                <button onclick="testWebhook()">🧪 Test Webhook Endpoint</button>
+            </div>
+            <div id="webhookResult"></div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE = '{{API_BASE_URL}}';
+        
+        // Update API URL display
+        document.getElementById('apiUrl').textContent = API_BASE;
+
+        // Server Status Check
+        async function checkServerStatus() {
+            const statusEl = document.getElementById('serverStatus');
+            statusEl.textContent = 'Checking...';
+            statusEl.className = 'status';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/users/test-connection`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    statusEl.textContent = '✅ Server Online - Backend is running correctly';
+                    statusEl.className = 'status online';
+                } else {
+                    statusEl.textContent = `⚠️ Server responding with status: ${response.status}`;
+                    statusEl.className = 'status offline';
+                }
+            } catch (error) {
+                statusEl.textContent = '❌ Server Offline - Cannot connect to backend';
+                statusEl.className = 'status offline';
+            }
+        }
+
+        // Create UPI Mandate
+        async function createUpiMandate() {
+            const userUpiId = document.getElementById('userUpiId').value;
+            const amount = document.getElementById('amount').value;
+            const resultEl = document.getElementById('mandateResult');
+            
+            if (!userUpiId) {
+                showResult(resultEl, 'Please enter a UPI ID', 'error');
+                return;
+            }
+            
+            showResult(resultEl, 'Creating UPI mandate...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/upi-mandates/create-mandate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId: 'test-user-' + Date.now(),
+                        userUpiId: userUpiId,
+                        amount: parseInt(amount)
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let result = `✅ UPI Mandate Created Successfully!\n\n`;
+                    result += `Mandate ID: ${data.mandate.mandateId}\n`;
+                    result += `Amount: ₹${data.mandate.amount}\n`;
+                    result += `Status: ${data.mandate.status}\n`;
+                    
+                    if (data.mandate.paymentLink) {
+                        result += `\nPayment Link: ${data.mandate.paymentLink}\n`;
+                        result += `\n🎯 Click the payment link to complete the mandate setup!`;
+                    }
+                    
+                    showResult(resultEl, result, 'success');
+                    
+                    // Show QR code if available
+                    if (data.mandate.qrCode) {
+                        const qrDiv = document.createElement('div');
+                        qrDiv.className = 'qr-code';
+                        qrDiv.innerHTML = `
+                            <h4>📱 Scan QR Code for UPI Payment:</h4>
+                            <img src="${data.mandate.qrCode}" alt="UPI QR Code">
+                        `;
+                        resultEl.appendChild(qrDiv);
+                    }
+                } else {
+                    showResult(resultEl, `❌ Error: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showResult(resultEl, `❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test Device Verification
+        async function testDeviceVerification() {
+            const resultEl = document.getElementById('deviceResult');
+            showResult(resultEl, 'Testing device verification...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/device-verification/verify`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        deviceFingerprint: 'test-device-' + Date.now(),
+                        browserInfo: 'Test Browser',
+                        timestamp: Date.now()
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let result = `✅ Device Verification Successful!\n\n`;
+                    result += `Device ID: ${data.deviceFingerprint}\n`;
+                    result += `Status: ${data.status}\n`;
+                    result += `Trial Status: ${data.trialStatus || 'N/A'}\n`;
+                    showResult(resultEl, result, 'success');
+                } else {
+                    showResult(resultEl, `❌ Error: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                showResult(resultEl, `❌ Network Error: ${error.message}`, 'error');
+            }
+        }
+
+        // Test Webhook
+        async function testWebhook() {
+            const resultEl = document.getElementById('webhookResult');
+            const statusEl = document.getElementById('webhookStatus');
+            
+            showResult(resultEl, 'Testing webhook endpoint...', 'info');
+            statusEl.textContent = 'Testing...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/upi-mandates/webhook`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.status === 404) {
+                    showResult(resultEl, '✅ Webhook endpoint is properly configured (GET requests return 404 as expected)', 'success');
+                    statusEl.textContent = '✅ Configured correctly';
+                } else {
+                    showResult(resultEl, `⚠️ Unexpected response: ${response.status}`, 'error');
+                    statusEl.textContent = '⚠️ Unexpected response';
+                }
+            } catch (error) {
+                showResult(resultEl, `❌ Webhook endpoint error: ${error.message}`, 'error');
+                statusEl.textContent = '❌ Error';
+            }
+        }
+
+        // Utility function to show results
+        function showResult(element, message, type) {
+            element.innerHTML = `<div class="result ${type}">${message}</div>`;
+        }
+
+        // Initialize page
+        window.addEventListener('load', () => {
+            checkServerStatus();
+        });
+    </script>
+</body>
+</html>

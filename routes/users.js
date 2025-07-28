@@ -2,6 +2,16 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
+// Test connection endpoint
+router.get('/test-connection', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'Backend server is running correctly',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development'
+    });
+});
+
 // Get or create user
 router.post('/register', async (req, res) => {
     try {
