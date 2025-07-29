@@ -220,24 +220,24 @@
                 
                 if (data.success) {
                     let result = `✅ UPI Mandate Created Successfully!\n\n`;
-                    result += `Mandate ID: ${data.mandate.mandateId}\n`;
-                    result += `Amount: ₹${data.mandate.amount}\n`;
-                    result += `Status: ${data.mandate.status}\n`;
+                    result += `Mandate ID: ${data.data.mandateId}\n`;
+                    result += `Amount: ₹${data.data.amount}\n`;
+                    result += `Status: ${data.data.status || 'PENDING'}\n`;
                     
-                    if (data.mandate.paymentLink) {
-                        result += `\nPayment Link: ${data.mandate.paymentLink}\n`;
+                    if (data.data.paymentUrl) {
+                        result += `\nPayment Link: ${data.data.paymentUrl}\n`;
                         result += `\n🎯 Click the payment link to complete the mandate setup!`;
                     }
                     
                     showResult(resultEl, result, 'success');
                     
                     // Show QR code if available
-                    if (data.mandate.qrCode) {
+                    if (data.data.qrCodeImage) {
                         const qrDiv = document.createElement('div');
                         qrDiv.className = 'qr-code';
                         qrDiv.innerHTML = `
                             <h4>📱 Scan QR Code for UPI Payment:</h4>
-                            <img src="${data.mandate.qrCode}" alt="UPI QR Code">
+                            <img src="${data.data.qrCodeImage}" alt="UPI QR Code" style="max-width: 200px;">
                         `;
                         resultEl.appendChild(qrDiv);
                     }
@@ -255,15 +255,19 @@
             showResult(resultEl, 'Testing device verification...', 'info');
             
             try {
-                const response = await fetch(`${API_BASE}/api/device-verification/verify`, {
+                const response = await fetch(`${API_BASE}/api/device-verification/verify-device`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         deviceFingerprint: 'test-device-' + Date.now(),
-                        browserInfo: 'Test Browser',
-                        timestamp: Date.now()
+                        userId: 'test-user-' + Date.now(),
+                        deviceInfo: 'Test Browser - Dashboard',
+                        userAgent: navigator.userAgent,
+                        extensionVersion: '1.0.0',
+                        securityFingerprint: 'test-security-' + Date.now(),
+                        sessionValidation: Date.now()
                     })
                 });
                 
@@ -271,9 +275,10 @@
                 
                 if (data.success) {
                     let result = `✅ Device Verification Successful!\n\n`;
-                    result += `Device ID: ${data.deviceFingerprint}\n`;
-                    result += `Status: ${data.status}\n`;
-                    result += `Trial Status: ${data.trialStatus || 'N/A'}\n`;
+                    result += `Device Status: ${data.deviceStatus || 'Verified'}\n`;
+                    result += `Trial Status: ${data.subscriptionData?.subscriptionStatus || 'trial'}\n`;
+                    result += `Trial Days: ${data.subscriptionData?.trialDaysRemaining || 'N/A'}\n`;
+                    result += `Can Use Extension: ${data.subscriptionData?.canUseExtension ? 'Yes' : 'No'}\n`;
                     showResult(resultEl, result, 'success');
                 } else {
                     showResult(resultEl, `❌ Error: ${data.message}`, 'error');
