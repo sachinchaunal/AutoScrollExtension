@@ -99,6 +99,16 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    // Usage analytics
+    totalScrolls: {
+        type: Number,
+        default: 0
+    },
+    platformUsage: {
+        youtube: { type: Number, default: 0 },
+        instagram: { type: Number, default: 0 },
+        facebook: { type: Number, default: 0 }
+    },
     // Backend verification
     lastVerificationDate: {
         type: Date,
