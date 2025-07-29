@@ -93,37 +93,12 @@ router.post('/create-mandate', async (req, res) => {
         const nextChargeDate = new Date();
         nextChargeDate.setDate(nextChargeDate.getDate() + 30); // Next month
 
-        // Create Razorpay UPI mandate
-        const mandateOptions = {
-            type: 'upi',
-            amount: amount * 100, // Convert to paise
-            currency: 'INR',
-            description: 'AutoScroll Extension Monthly Subscription',
-            customer_notify: 1,
-            recurring: {
-                preferred_methods: ['upi'],
-                interval: 1,
-                interval_type: 'monthly'
-            },
-            receipt: `mandate_${userId}_${Date.now()}`,
-            notes: {
-                userId: userId,
-                userUpiId: userUpiId,
-                purpose: 'autoscroll_subscription'
-            }
-        };
-
-        console.log('Creating Razorpay mandate with options:', mandateOptions);
-        const razorpayMandate = await razorpay.subscriptions.create(mandateOptions);
-        
-        console.log('Razorpay mandate created:', razorpayMandate);
-
         // Generate local mandate ID
         const mandateId = `MANDATE_${userId}_${Date.now()}`;
 
-        // Create UPI payment link for mandate approval
+        // Create Razorpay payment link for UPI subscription
         const paymentLinkOptions = {
-            amount: amount * 100,
+            amount: amount * 100, // Convert to paise
             currency: 'INR',
             accept_partial: false,
             description: CONFIG.subscriptionDescription,
@@ -140,13 +115,23 @@ router.post('/create-mandate', async (req, res) => {
             notes: {
                 mandate_id: mandateId,
                 user_id: userId,
-                type: 'mandate_setup'
+                user_upi_id: userUpiId,
+                purpose: 'AutoScroll Extension Subscription'
             },
-            callback_url: `${process.env.API_BASE_URL}/api/upi-mandates/callback`,
-            callback_method: 'get'
+            callback_url: `${CONFIG.apiBaseUrl}/api/upi-mandates/callback`,
+            callback_method: 'get',
+            options: {
+                checkout: {
+                    method: {
+                        upi: 1
+                    }
+                }
+            }
         };
 
+        console.log('Creating Razorpay payment link with options:', paymentLinkOptions);
         const paymentLink = await razorpay.paymentLink.create(paymentLinkOptions);
+        
         console.log('Payment link created:', paymentLink);
 
         // Generate QR code for the payment link
@@ -171,7 +156,7 @@ router.post('/create-mandate', async (req, res) => {
             nextChargeDate,
             qrCodeData: paymentLink.short_url,
             qrCodeImage,
-            razorpayMandateId: razorpayMandate.id,
+            razorpayMandateId: paymentLink.id, // Using payment link ID for now
             razorpayPaymentLinkId: paymentLink.id,
             metadata: {
                 userAgent: req.headers['user-agent'],

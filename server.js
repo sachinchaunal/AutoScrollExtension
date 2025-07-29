@@ -75,6 +75,12 @@ app.use(cors({
             return;
         }
         
+        // Check if wildcard is set for all origins
+        if (CONFIG.allowedOrigins.includes('*')) {
+            callback(null, true);
+            return;
+        }
+        
         // In production, check against allowed origins
         if (!origin || CONFIG.allowedOrigins.includes(origin)) {
             callback(null, true);
