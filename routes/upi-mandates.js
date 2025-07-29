@@ -172,7 +172,7 @@ router.post('/create-mandate', async (req, res) => {
             message: 'UPI Autopay mandate created successfully using Razorpay',
             data: {
                 mandateId: mandate.mandateId,
-                razorpayMandateId: razorpayMandate.id,
+                razorpayMandateId: paymentLink.id,
                 paymentLinkId: paymentLink.id,
                 qrCodeImage: mandate.qrCodeImage,
                 qrCodeData: mandate.qrCodeData,
