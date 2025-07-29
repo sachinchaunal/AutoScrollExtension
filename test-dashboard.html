@@ -111,7 +111,7 @@
         <div class="test-section">
             <h3>📊 Server Status</h3>
             <div id="serverStatus" class="status">Checking...</div>
-            <button onclick="checkServerStatus()">🔄 Refresh Status</button>
+            <button id="refreshStatusBtn">🔄 Refresh Status</button>
         </div>
 
         <!-- API Configuration -->
@@ -130,7 +130,7 @@
             <div class="test-form">
                 <input type="text" id="userUpiId" placeholder="Enter UPI ID (e.g., test@paytm)" value="test@paytm">
                 <input type="number" id="amount" placeholder="Amount (₹)" value="9" min="1">
-                <button onclick="createUpiMandate()">🎯 Create UPI Mandate</button>
+                <button id="createMandateBtn">🎯 Create UPI Mandate</button>
             </div>
             <div id="mandateResult"></div>
         </div>
@@ -139,7 +139,7 @@
         <div class="test-section">
             <h3>🔐 Device Verification Test</h3>
             <div class="test-form">
-                <button onclick="testDeviceVerification()">🛡️ Test Device Verification</button>
+                <button id="testDeviceBtn">🛡️ Test Device Verification</button>
             </div>
             <div id="deviceResult"></div>
         </div>
@@ -150,7 +150,7 @@
             <div class="info">
                 <strong>Webhook URL:</strong> {{API_BASE_URL}}/api/upi-mandates/webhook<br>
                 <strong>Status:</strong> <span id="webhookStatus">Not tested</span><br>
-                <button onclick="testWebhook()">🧪 Test Webhook Endpoint</button>
+                <button id="testWebhookBtn">🧪 Test Webhook Endpoint</button>
             </div>
             <div id="webhookResult"></div>
         </div>
@@ -320,6 +320,12 @@
         // Initialize page
         window.addEventListener('load', () => {
             checkServerStatus();
+            
+            // Add event listeners to buttons
+            document.getElementById('refreshStatusBtn').addEventListener('click', checkServerStatus);
+            document.getElementById('createMandateBtn').addEventListener('click', createUpiMandate);
+            document.getElementById('testDeviceBtn').addEventListener('click', testDeviceVerification);
+            document.getElementById('testWebhookBtn').addEventListener('click', testWebhook);
         });
     </script>
 </body>

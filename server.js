@@ -49,8 +49,22 @@ validateConfig();
 // Connect to MongoDB
 connectDB();
 
-// Middleware
-app.use(helmet());
+// Middleware - Configure Helmet with relaxed CSP for test dashboard
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for test dashboard
+            styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles
+            imgSrc: ["'self'", "data:", "blob:", "https:"], // Allow images from various sources
+            connectSrc: ["'self'", CONFIG.apiBaseUrl, "https://autoscrollextension.onrender.com"],
+            fontSrc: ["'self'", "https:", "data:"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+        },
+    },
+}));
 
 // CORS configuration using environment variables
 app.use(cors({
