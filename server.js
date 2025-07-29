@@ -120,18 +120,28 @@ app.get('/test-dashboard', (req, res) => {
         const path = require('path');
         const fs = require('fs');
         const dashboardPath = path.join(__dirname, 'test-dashboard.html');
+        
+        if (!fs.existsSync(dashboardPath)) {
+            return res.status(404).json({
+                success: false,
+                message: 'Test dashboard file not found'
+            });
+        }
+        
         let htmlContent = fs.readFileSync(dashboardPath, 'utf8');
         
         // Replace template variables with actual environment values
         htmlContent = htmlContent.replace(/{{API_BASE_URL}}/g, CONFIG.apiBaseUrl);
         htmlContent = htmlContent.replace(/{{NODE_ENV}}/g, CONFIG.nodeEnv);
         
+        res.setHeader('Content-Type', 'text/html');
         res.send(htmlContent);
     } catch (error) {
         console.error('Error serving test dashboard:', error);
         res.status(500).json({
             success: false,
-            message: 'Error loading test dashboard'
+            message: 'Error loading test dashboard',
+            error: error.message
         });
     }
 });
