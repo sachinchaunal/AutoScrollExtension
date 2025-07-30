@@ -33,6 +33,11 @@ const CONFIG = {
     webhookBaseUrl: process.env.WEBHOOK_BASE_URL || process.env.API_BASE_URL || `http://localhost:${process.env.PORT || 3000}`
 };
 
+// Trust proxy for production deployment (Render, Heroku, etc.)
+if (CONFIG.nodeEnv === 'production') {
+    app.set('trust proxy', true);
+}
+
 // Validate configuration before starting
 console.log('🔧 Starting AutoScroll Backend Server...\n');
 console.log('📋 Server Configuration:');

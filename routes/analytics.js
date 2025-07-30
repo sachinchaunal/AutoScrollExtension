@@ -2,6 +2,15 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
+// Test connection endpoint
+router.get('/test', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'Analytics service is running correctly',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Log scroll event
 router.post('/', async (req, res) => {
     try {

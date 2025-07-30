@@ -2,6 +2,15 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
+// Test connection endpoint
+router.get('/test', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'Subscriptions service is running correctly',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // Check subscription status
 router.post('/check-subscription', async (req, res) => {
     try {

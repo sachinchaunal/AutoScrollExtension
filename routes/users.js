@@ -15,7 +15,7 @@ router.get('/test-connection', (req, res) => {
 // Get or create user
 router.post('/register', async (req, res) => {
     try {
-        const { userId, email } = req.body;
+        const { userId, email, deviceFingerprint } = req.body;
 
         if (!userId) {
             return res.status(400).json({
@@ -24,12 +24,16 @@ router.post('/register', async (req, res) => {
             });
         }
 
+        // If deviceFingerprint is not provided, generate one for testing
+        const finalDeviceFingerprint = deviceFingerprint || `device_${userId}_${Date.now()}`;
+
         let user = await User.findOne({ userId });
 
         if (!user) {
             user = new User({
                 userId,
                 email,
+                deviceFingerprint: finalDeviceFingerprint,
                 trialStartDate: new Date()
             });
             await user.save();
@@ -42,7 +46,8 @@ router.post('/register', async (req, res) => {
                 subscriptionStatus: user.subscriptionStatus,
                 trialDaysRemaining: user.trialDaysRemaining,
                 isSubscriptionActive: user.isSubscriptionActive,
-                subscriptionExpiry: user.subscriptionExpiry
+                subscriptionExpiry: user.subscriptionExpiry,
+                deviceFingerprint: user.deviceFingerprint
             }
         });
     } catch (error) {

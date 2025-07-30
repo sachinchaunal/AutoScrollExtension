@@ -23,6 +23,12 @@ router.post('/create-order', async (req, res) => {
             });
         }
 
+        // Log Razorpay configuration for debugging
+        console.log('Creating Razorpay order with config:', {
+            key_id: process.env.RAZORPAY_KEY_ID ? '***' + process.env.RAZORPAY_KEY_ID.slice(-4) : 'Not set',
+            key_secret: process.env.RAZORPAY_KEY_SECRET ? '***' + process.env.RAZORPAY_KEY_SECRET.slice(-4) : 'Not set'
+        });
+
         // Create Razorpay order
         const options = {
             amount: amount * 100, // Convert to paise
@@ -30,7 +36,9 @@ router.post('/create-order', async (req, res) => {
             receipt: `autoscroll_${userId}_${Date.now()}`
         };
 
+        console.log('Razorpay order options:', options);
         const order = await razorpay.orders.create(options);
+        console.log('Razorpay order created:', order);
 
         // Save order details
         const payment = new Payment({
@@ -58,10 +66,15 @@ router.post('/create-order', async (req, res) => {
             }
         });
     } catch (error) {
+        console.error('Payment order creation error:', {
+            message: error.message,
+            stack: error.stack,
+            response: error.response?.data
+        });
         res.status(500).json({
             success: false,
             message: 'Error creating payment order',
-            error: error.message
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
 });
