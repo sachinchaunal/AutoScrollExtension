@@ -80,6 +80,31 @@ const userSchema = new mongoose.Schema({
         enum: ['low', 'medium', 'high'],
         default: 'low'
     },
+    // Enhanced device fingerprinting
+    deviceFingerprints: {
+        main: String, // Primary device fingerprint
+        hardwareId: String, // Hardware-based identifier
+        installationId: String, // Installation-specific identifier
+        fingerprintVersion: String, // Version of fingerprinting system
+        context: String, // Context where fingerprint was generated (popup, background, etc.)
+        createdAt: Date,
+        updatedAt: Date
+    },
+    enhancedFingerprintData: {
+        version: String,
+        context: String,
+        hasHardwareId: Boolean,
+        hasInstallationId: Boolean,
+        timestamp: Date,
+        // Additional metadata for enhanced tracking
+        fingerprintComponents: {
+            hardware: String,
+            browser: String,
+            canvas: String,
+            webgl: String,
+            audio: String
+        }
+    },
     // Activity tracking
     lastActiveDate: {
         type: Date,
