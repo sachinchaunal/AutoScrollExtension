@@ -11,72 +11,15 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET
 });
 
-// Create payment order
+// ❌ REMOVED: Payment Orders API (not needed for autopay-only model)
+// Use UPI mandates for all subscription payments instead
 router.post('/create-order', async (req, res) => {
-    try {
-        const { userId, amount = 9, currency = 'INR' } = req.body;
-
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'User ID is required'
-            });
-        }
-
-        // Log Razorpay configuration for debugging
-        console.log('Creating Razorpay order with config:', {
-            key_id: process.env.RAZORPAY_KEY_ID ? '***' + process.env.RAZORPAY_KEY_ID.slice(-4) : 'Not set',
-            key_secret: process.env.RAZORPAY_KEY_SECRET ? '***' + process.env.RAZORPAY_KEY_SECRET.slice(-4) : 'Not set'
-        });
-
-        // Create Razorpay order
-        const options = {
-            amount: amount * 100, // Convert to paise
-            currency: currency,
-            receipt: `autoscroll_${userId}_${Date.now()}`
-        };
-
-        console.log('Razorpay order options:', options);
-        const order = await razorpay.orders.create(options);
-        console.log('Razorpay order created:', order);
-
-        // Save order details
-        const payment = new Payment({
-            userId,
-            transactionId: order.receipt,
-            razorpayOrderId: order.id,
-            amount,
-            currency,
-            status: 'pending',
-            metadata: {
-                userAgent: req.headers['user-agent'],
-                ipAddress: req.ip
-            }
-        });
-
-        await payment.save();
-
-        res.json({
-            success: true,
-            data: {
-                orderId: order.id,
-                amount: order.amount,
-                currency: order.currency,
-                key: process.env.RAZORPAY_KEY_ID
-            }
-        });
-    } catch (error) {
-        console.error('Payment order creation error:', {
-            message: error.message,
-            stack: error.stack,
-            response: error.response?.data
-        });
-        res.status(500).json({
-            success: false,
-            message: 'Error creating payment order',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
+    res.status(410).json({
+        success: false,
+        message: 'Payment orders deprecated. Use UPI mandates for autopay subscriptions.',
+        redirect: '/api/upi-mandates/create-mandate',
+        recommendation: 'This endpoint has been removed in favor of UPI autopay mandates which provide better user experience and automatic recurring payments.'
+    });
 });
 
 // Verify payment
