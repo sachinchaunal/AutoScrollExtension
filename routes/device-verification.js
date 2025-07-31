@@ -47,6 +47,8 @@ router.post('/verify-device', async (req, res) => {
         const { 
             deviceFingerprint, 
             hardwareId,
+            machineId, // NEW: Machine-level unique ID
+            browserUniqueId, // NEW: Browser-specific unique ID
             installationId,
             userId, 
             deviceInfo,
@@ -106,15 +108,33 @@ router.post('/verify-device', async (req, res) => {
         console.log(`Device verification request: fingerprint=${deviceFingerprint.substring(0, 16)}..., userId=${userId}, isReinstall=${isReinstall}`);
 
         // ENHANCED DUPLICATE PREVENTION LOGIC with Hardware-Level Detection
-        console.log(`Device verification request: fingerprint=${deviceFingerprint.substring(0, 16)}..., userId=${userId}, isReinstall=${isReinstall}, hardwareId=${hardwareId ? hardwareId.substring(0, 16) + '...' : 'none'}, context=${context}`);
+        console.log(`Device verification request: fingerprint=${deviceFingerprint.substring(0, 16)}..., userId=${userId}, isReinstall=${isReinstall}, hardwareId=${hardwareId ? hardwareId.substring(0, 16) + '...' : 'none'}, machineId=${machineId ? machineId.substring(0, 16) + '...' : 'none'}, context=${context}`);
         
-        // Multi-layer device detection (most restrictive to least restrictive)
+        // ROBUST Multi-layer device detection (most restrictive to least restrictive)
+        // This prevents trial abuse by checking multiple device identifiers
         let existingDeviceUser = null;
         
-        // Layer 1: Hardware ID match (strongest indicator)
-        if (hardwareId) {
+        // Layer 1: Machine ID match (strongest indicator - hardware level)
+        if (machineId) {
             existingDeviceUser = await User.findOne({ 
-                'deviceFingerprints.hardwareId': hardwareId 
+                $or: [
+                    { 'deviceFingerprints.machineId': machineId },
+                    { 'robustFingerprintData.machineId': machineId }
+                ]
+            }).sort({ createdAt: -1 });
+            
+            if (existingDeviceUser) {
+                console.log(`Found existing user by machineId: ${existingDeviceUser.userId}`);
+            }
+        }
+        
+        // Layer 2: Hardware ID match (if no machine match)
+        if (!existingDeviceUser && hardwareId) {
+            existingDeviceUser = await User.findOne({ 
+                $or: [
+                    { 'deviceFingerprints.hardwareId': hardwareId },
+                    { 'robustFingerprintData.hardwareId': hardwareId }
+                ]
             }).sort({ createdAt: -1 });
             
             if (existingDeviceUser) {
@@ -122,7 +142,21 @@ router.post('/verify-device', async (req, res) => {
             }
         }
         
-        // Layer 2: Device fingerprint match (if no hardware match)
+        // Layer 3: Browser Unique ID match (persistent across sessions)
+        if (!existingDeviceUser && browserUniqueId) {
+            existingDeviceUser = await User.findOne({ 
+                $or: [
+                    { 'deviceFingerprints.browserUniqueId': browserUniqueId },
+                    { 'robustFingerprintData.browserUniqueId': browserUniqueId }
+                ]
+            }).sort({ createdAt: -1 });
+            
+            if (existingDeviceUser) {
+                console.log(`Found existing user by browserUniqueId: ${existingDeviceUser.userId}`);
+            }
+        }
+        
+        // Layer 4: Device fingerprint match (fallback)
         if (!existingDeviceUser) {
             existingDeviceUser = await User.findOne({ 
                 deviceFingerprint: deviceFingerprint 
@@ -133,7 +167,7 @@ router.post('/verify-device', async (req, res) => {
             }
         }
         
-        // Layer 3: Check for similar fingerprints on same device (fallback)
+        // Layer 5: Check for similar fingerprints on same device (final fallback)
         if (!existingDeviceUser && hardwareId) {
             existingDeviceUser = await User.findOne({
                 $or: [
@@ -179,6 +213,14 @@ router.post('/verify-device', async (req, res) => {
                     existingDeviceUser.deviceFingerprints.hardwareId = hardwareId;
                 }
                 
+                if (machineId) {
+                    existingDeviceUser.deviceFingerprints.machineId = machineId;
+                }
+                
+                if (browserUniqueId) {
+                    existingDeviceUser.deviceFingerprints.browserUniqueId = browserUniqueId;
+                }
+                
                 if (installationId) {
                     existingDeviceUser.deviceFingerprints.installationId = installationId;
                 }
@@ -191,16 +233,18 @@ router.post('/verify-device', async (req, res) => {
                     existingDeviceUser.deviceFingerprints.context = context;
                 }
                 
-                // Update enhanced fingerprint metadata
-                if (!existingDeviceUser.enhancedFingerprintData) {
-                    existingDeviceUser.enhancedFingerprintData = {};
+                // Update robust fingerprint metadata
+                if (!existingDeviceUser.robustFingerprintData) {
+                    existingDeviceUser.robustFingerprintData = {};
                 }
                 
-                existingDeviceUser.enhancedFingerprintData.version = fingerprintVersion;
-                existingDeviceUser.enhancedFingerprintData.context = context;
-                existingDeviceUser.enhancedFingerprintData.hasHardwareId = !!hardwareId;
-                existingDeviceUser.enhancedFingerprintData.hasInstallationId = !!installationId;
-                existingDeviceUser.enhancedFingerprintData.timestamp = new Date();
+                existingDeviceUser.robustFingerprintData.version = fingerprintVersion;
+                existingDeviceUser.robustFingerprintData.context = context;
+                existingDeviceUser.robustFingerprintData.hasMachineId = !!machineId;
+                existingDeviceUser.robustFingerprintData.hasHardwareId = !!hardwareId;
+                existingDeviceUser.robustFingerprintData.hasBrowserUniqueId = !!browserUniqueId;
+                existingDeviceUser.robustFingerprintData.hasInstallationId = !!installationId;
+                existingDeviceUser.robustFingerprintData.timestamp = new Date();
                 
                 const verificationToken = existingDeviceUser.generateVerificationToken();
                 await existingDeviceUser.save();
@@ -255,6 +299,14 @@ router.post('/verify-device', async (req, res) => {
                     existingDeviceUser.deviceFingerprints.hardwareId = hardwareId;
                 }
                 
+                if (machineId) {
+                    existingDeviceUser.deviceFingerprints.machineId = machineId;
+                }
+                
+                if (browserUniqueId) {
+                    existingDeviceUser.deviceFingerprints.browserUniqueId = browserUniqueId;
+                }
+                
                 if (installationId) {
                     existingDeviceUser.deviceFingerprints.installationId = installationId;
                 }
@@ -262,17 +314,19 @@ router.post('/verify-device', async (req, res) => {
                 existingDeviceUser.deviceFingerprints.fingerprintVersion = fingerprintVersion;
                 existingDeviceUser.deviceFingerprints.context = context;
                 
-                // Update enhanced fingerprint metadata for reinstall tracking
-                if (!existingDeviceUser.enhancedFingerprintData) {
-                    existingDeviceUser.enhancedFingerprintData = {};
+                // Update robust fingerprint metadata for reinstall tracking
+                if (!existingDeviceUser.robustFingerprintData) {
+                    existingDeviceUser.robustFingerprintData = {};
                 }
                 
-                existingDeviceUser.enhancedFingerprintData.version = fingerprintVersion;
-                existingDeviceUser.enhancedFingerprintData.context = context;
-                existingDeviceUser.enhancedFingerprintData.hasHardwareId = !!hardwareId;
-                existingDeviceUser.enhancedFingerprintData.hasInstallationId = !!installationId;
-                existingDeviceUser.enhancedFingerprintData.timestamp = new Date();
-                existingDeviceUser.enhancedFingerprintData.isReinstall = true;
+                existingDeviceUser.robustFingerprintData.version = fingerprintVersion;
+                existingDeviceUser.robustFingerprintData.context = context;
+                existingDeviceUser.robustFingerprintData.hasMachineId = !!machineId;
+                existingDeviceUser.robustFingerprintData.hasHardwareId = !!hardwareId;
+                existingDeviceUser.robustFingerprintData.hasBrowserUniqueId = !!browserUniqueId;
+                existingDeviceUser.robustFingerprintData.hasInstallationId = !!installationId;
+                existingDeviceUser.robustFingerprintData.timestamp = new Date();
+                existingDeviceUser.robustFingerprintData.isReinstall = true;
                 
                 // Generate verification token
                 const verificationToken = existingDeviceUser.generateVerificationToken();
@@ -370,15 +424,19 @@ router.post('/verify-device', async (req, res) => {
             deviceFingerprints: {
                 main: deviceFingerprint,
                 hardwareId: hardwareId,
+                machineId: machineId,
+                browserUniqueId: browserUniqueId,
                 installationId: installationId,
                 fingerprintVersion: fingerprintVersion,
                 context: context,
                 createdAt: now
             },
-            enhancedFingerprintData: {
+            robustFingerprintData: {
                 version: fingerprintVersion,
                 context: context,
+                hasMachineId: !!machineId,
                 hasHardwareId: !!hardwareId,
+                hasBrowserUniqueId: !!browserUniqueId,
                 hasInstallationId: !!installationId,
                 timestamp: now
             }

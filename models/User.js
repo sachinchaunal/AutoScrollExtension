@@ -84,25 +84,29 @@ const userSchema = new mongoose.Schema({
     deviceFingerprints: {
         main: String, // Primary device fingerprint
         hardwareId: String, // Hardware-based identifier
+        machineId: String, // Machine-level unique identifier (NEW)
+        browserUniqueId: String, // Browser-specific unique identifier (NEW)
         installationId: String, // Installation-specific identifier
         fingerprintVersion: String, // Version of fingerprinting system
         context: String, // Context where fingerprint was generated (popup, background, etc.)
         createdAt: Date,
         updatedAt: Date
     },
-    enhancedFingerprintData: {
+    robustFingerprintData: {
         version: String,
         context: String,
+        hasMachineId: Boolean,
         hasHardwareId: Boolean,
+        hasBrowserUniqueId: Boolean,
         hasInstallationId: Boolean,
         timestamp: Date,
-        // Additional metadata for enhanced tracking
+        isReinstall: Boolean,
+        // Additional metadata for robust tracking
         fingerprintComponents: {
+            machine: String,
             hardware: String,
             browser: String,
-            canvas: String,
-            webgl: String,
-            audio: String
+            system: String
         }
     },
     // Activity tracking
@@ -220,5 +224,11 @@ userSchema.index({ subscriptionExpiry: 1 });
 userSchema.index({ lastActiveDate: 1 });
 userSchema.index({ verificationToken: 1 });
 userSchema.index({ isTrialUsed: 1, deviceFingerprint: 1 });
+// Robust fingerprinting indexes
+userSchema.index({ 'deviceFingerprints.hardwareId': 1 });
+userSchema.index({ 'deviceFingerprints.machineId': 1 });
+userSchema.index({ 'deviceFingerprints.browserUniqueId': 1 });
+userSchema.index({ 'robustFingerprintData.hasMachineId': 1 });
+userSchema.index({ 'robustFingerprintData.hasHardwareId': 1 });
 
 module.exports = mongoose.model('User', userSchema);
