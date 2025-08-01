@@ -2,6 +2,42 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
+// Get user subscriptions (alias for /:userId)
+router.get('/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const user = await User.findById(userId).select('subscriptionStatus isSubscriptionActive subscriptionExpiry trialDaysRemaining trialEndDate hasAutoRenewal');
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                userId,
+                subscriptionStatus: user.subscriptionStatus,
+                isSubscriptionActive: user.isSubscriptionActive,
+                subscriptionExpiry: user.subscriptionExpiry,
+                trialDaysRemaining: user.trialDaysRemaining,
+                trialEndDate: user.trialEndDate,
+                hasAutoRenewal: user.hasAutoRenewal
+            }
+        });
+    } catch (error) {
+        console.error('Subscription fetch error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch subscription data',
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        });
+    }
+});
+
 // Get user subscriptions
 router.get('/user/:userId', async (req, res) => {
     try {
