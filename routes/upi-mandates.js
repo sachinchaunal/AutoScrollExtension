@@ -39,6 +39,49 @@ const CONFIG = {
     frontendUrl: process.env.FRONTEND_URL || 'chrome-extension://your-extension-id'
 };
 
+// Get UPI mandates overview
+router.get('/', async (req, res) => {
+    try {
+        const totalMandates = await UpiMandate.countDocuments();
+        const activeMandates = await UpiMandate.countDocuments({ status: 'ACTIVE' });
+        const pendingMandates = await UpiMandate.countDocuments({ status: 'PENDING' });
+        const cancelledMandates = await UpiMandate.countDocuments({ status: 'CANCELLED' });
+        
+        const recentMandates = await UpiMandate.find()
+            .sort({ createdAt: -1 })
+            .limit(5)
+            .select('userId mandateId status amount createdAt');
+
+        res.json({
+            success: true,
+            data: {
+                totalMandates,
+                activeMandates,
+                pendingMandates,
+                cancelledMandates,
+                recentMandates,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching UPI mandates overview:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching UPI mandates overview',
+            error: error.message
+        });
+    }
+});
+
+// Test connection endpoint
+router.get('/test', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'UPI Mandates service is running correctly',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // UPI Mandate configuration (legacy - keeping for backward compatibility)
 const UPI_CONFIG = {
     merchantVpa: CONFIG.merchantVpa,
@@ -203,6 +246,44 @@ router.post('/create-mandate', async (req, res) => {
             });
         }
 
+        res.status(500).json({
+            success: false,
+            message: 'Error creating UPI mandate',
+            error: error.message
+        });
+    }
+});
+
+// Create UPI mandate (alias for create-mandate)
+router.post('/create', async (req, res) => {
+    try {
+        const { userId, userUpiId, amount = CONFIG.subscriptionPrice } = req.body;
+
+        if (!userId || !userUpiId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID and UPI ID are required'
+            });
+        }
+
+        // Simple mandate creation for testing
+        const mandateId = `TEST_MANDATE_${userId}_${Date.now()}`;
+        
+        res.json({
+            success: true,
+            message: 'Test UPI mandate created successfully',
+            data: {
+                mandateId,
+                userId,
+                userUpiId,
+                amount,
+                status: 'PENDING',
+                testMode: true
+            }
+        });
+
+    } catch (error) {
+        console.error('Create mandate error:', error);
         res.status(500).json({
             success: false,
             message: 'Error creating UPI mandate',
@@ -620,6 +701,30 @@ router.get('/history/:userId', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Error fetching mandate history',
+            error: error.message
+        });
+    }
+});
+
+// Get user mandates (alias for history)
+router.get('/user/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const mandates = await UpiMandate.find({ userId })
+            .sort({ createdAt: -1 })
+            .select('-qrCodeImage -qrCodeData') // Exclude large fields
+            .limit(10);
+
+        res.json({
+            success: true,
+            data: mandates
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching user mandates',
             error: error.message
         });
     }

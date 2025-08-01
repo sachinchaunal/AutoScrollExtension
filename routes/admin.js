@@ -5,8 +5,41 @@ const fs = require('fs');
 const User = require('../models/User');
 
 /**
- * Admin dashboard to monitor trial abuse and security metrics
+ * Admin dashboard to monitor user statistics and subscription metrics
  */
+
+// Get admin overview
+router.get('/', async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const activeSubscriptions = await User.countDocuments({ isSubscriptionActive: true });
+        const trialUsers = await User.countDocuments({ trialDaysRemaining: { $gt: 0 } });
+        const paidUsers = await User.countDocuments({ subscriptionStatus: 'active' });
+        
+        const totalScrolls = await User.aggregate([
+            { $group: { _id: null, total: { $sum: '$totalScrolls' } } }
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                totalUsers,
+                activeSubscriptions,
+                trialUsers,
+                paidUsers,
+                totalScrolls: totalScrolls[0]?.total || 0,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching admin overview:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching admin overview',
+            error: error.message
+        });
+    }
+});
 
 // Serve admin dashboard with environment configuration
 router.get('/dashboard', (req, res) => {
@@ -28,16 +61,16 @@ router.get('/dashboard', (req, res) => {
     }
 });
 
-// Get trial abuse statistics
-router.get('/trial-abuse-stats', async (req, res) => {
+// Get user statistics
+router.get('/users/stats', async (req, res) => {
     try {
-        const stats = await generateTrialAbuseStats();
+        const stats = await generateUserStats();
         res.json({
             success: true,
             data: stats
         });
     } catch (error) {
-        console.error('Error generating trial abuse stats:', error);
+        console.error('Error generating user stats:', error);
         res.status(500).json({
             success: false,
             message: 'Error generating statistics'
@@ -45,331 +78,319 @@ router.get('/trial-abuse-stats', async (req, res) => {
     }
 });
 
-// Get detailed device information
-router.get('/device-details/:deviceFingerprint', async (req, res) => {
+// Admin statistics (alias for users/stats)
+router.get('/stats', async (req, res) => {
     try {
-        const { deviceFingerprint } = req.params;
-        
-        const users = await User.find({ deviceFingerprint })
-            .sort({ createdAt: -1 })
-            .limit(10);
+        const stats = await generateUserStats();
+        res.json({
+            success: true,
+            data: stats
+        });
+    } catch (error) {
+        console.error('Error generating admin stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error generating statistics'
+        });
+    }
+});
 
-        if (users.length === 0) {
+// Get all users with pagination
+router.get('/users', async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 50;
+        const skip = (page - 1) * limit;
+        
+        const users = await User.find()
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
+            .select('googleId email displayName subscriptionStatus isSubscriptionActive trialDaysRemaining totalScrolls createdAt updatedAt');
+
+        const totalUsers = await User.countDocuments();
+        const totalPages = Math.ceil(totalUsers / limit);
+
+        res.json({
+            success: true,
+            data: {
+                users,
+                pagination: {
+                    currentPage: page,
+                    totalPages,
+                    totalUsers,
+                    hasNextPage: page < totalPages,
+                    hasPreviousPage: page > 1
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching users',
+            error: error.message
+        });
+    }
+});
+
+// Get user details by ID
+router.get('/users/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const user = await User.findById(userId);
+
+        if (!user) {
             return res.status(404).json({
                 success: false,
-                message: 'Device not found'
+                message: 'User not found'
             });
         }
 
-        const deviceStats = {
-            deviceFingerprint: deviceFingerprint.substring(0, 16) + '...',
-            totalUsers: users.length,
-            firstSeen: users[users.length - 1].createdAt,
-            lastSeen: users[0].lastActiveDate,
-            totalTrialBypassAttempts: users.reduce((sum, u) => sum + u.trialBypassAttempts, 0),
-            totalInstallationAttempts: users.reduce((sum, u) => sum + u.installationAttempts, 0),
-            securityRiskLevels: users.map(u => u.securityRiskLevel).filter(Boolean),
-            subscriptionStatuses: users.map(u => u.subscriptionStatus),
-            users: users.map(user => ({
-                userId: user.userId,
+        res.json({
+            success: true,
+            data: user
+        });
+
+    } catch (error) {
+        console.error('Error getting user details:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching user details'
+        });
+    }
+});
+
+// Update user subscription status
+router.put('/users/:userId/subscription', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { subscriptionStatus, isSubscriptionActive, subscriptionExpiry } = req.body;
+        
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        if (subscriptionStatus) user.subscriptionStatus = subscriptionStatus;
+        if (typeof isSubscriptionActive === 'boolean') user.isSubscriptionActive = isSubscriptionActive;
+        if (subscriptionExpiry) user.subscriptionExpiry = new Date(subscriptionExpiry);
+        user.updatedAt = new Date();
+
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'User subscription updated successfully',
+            data: {
+                userId,
                 subscriptionStatus: user.subscriptionStatus,
-                trialDaysRemaining: user.trialDaysRemaining,
-                securityRiskLevel: user.securityRiskLevel,
-                installationAttempts: user.installationAttempts,
-                trialBypassAttempts: user.trialBypassAttempts,
-                totalScrolls: user.totalScrolls,
-                createdAt: user.createdAt,
-                lastActiveDate: user.lastActiveDate,
-                deviceInfo: user.deviceInfo,
-                lastSeenIP: user.lastSeenIP
-            }))
-        };
-
-        res.json({
-            success: true,
-            data: deviceStats
-        });
-
-    } catch (error) {
-        console.error('Error getting device details:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching device details'
-        });
-    }
-});
-
-// Get high-risk users
-router.get('/high-risk-users', async (req, res) => {
-    try {
-        const highRiskUsers = await User.find({
-            $or: [
-                { securityRiskLevel: 'high' },
-                { trialBypassAttempts: { $gte: 3 } },
-                { installationAttempts: { $gte: 5 } },
-                { subscriptionStatus: 'blocked' }
-            ]
-        })
-        .sort({ lastActiveDate: -1 })
-        .limit(50)
-        .select('userId deviceFingerprint securityRiskLevel trialBypassAttempts installationAttempts subscriptionStatus lastActiveDate totalScrolls');
-
-        res.json({
-            success: true,
-            data: {
-                count: highRiskUsers.length,
-                users: highRiskUsers.map(user => ({
-                    userId: user.userId,
-                    deviceFingerprint: user.deviceFingerprint.substring(0, 16) + '...',
-                    securityRiskLevel: user.securityRiskLevel,
-                    trialBypassAttempts: user.trialBypassAttempts,
-                    installationAttempts: user.installationAttempts,
-                    subscriptionStatus: user.subscriptionStatus,
-                    lastActiveDate: user.lastActiveDate,
-                    totalScrolls: user.totalScrolls
-                }))
+                isSubscriptionActive: user.isSubscriptionActive,
+                subscriptionExpiry: user.subscriptionExpiry
             }
         });
 
     } catch (error) {
-        console.error('Error getting high-risk users:', error);
+        console.error('Error updating user subscription:', error);
         res.status(500).json({
             success: false,
-            message: 'Error fetching high-risk users'
+            message: 'Error updating user subscription'
         });
     }
 });
 
-// Block a device
-router.post('/block-device', async (req, res) => {
+// Delete user (soft delete)
+router.delete('/users/:userId', async (req, res) => {
     try {
-        const { deviceFingerprint, reason } = req.body;
+        const { userId } = req.params;
         
-        if (!deviceFingerprint) {
-            return res.status(400).json({
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            return res.status(404).json({
                 success: false,
-                message: 'Device fingerprint is required'
+                message: 'User not found'
             });
         }
 
-        const result = await User.updateMany(
-            { deviceFingerprint },
-            { 
-                subscriptionStatus: 'blocked',
-                $push: {
-                    securityNotes: {
-                        action: 'device_blocked',
-                        reason: reason || 'Manual admin action',
-                        timestamp: new Date()
-                    }
-                }
-            }
-        );
+        user.isDeleted = true;
+        user.deletedAt = new Date();
+        user.updatedAt = new Date();
+        await user.save();
 
         res.json({
             success: true,
-            message: `Blocked ${result.modifiedCount} users on this device`,
-            data: {
-                modifiedCount: result.modifiedCount,
-                deviceFingerprint: deviceFingerprint.substring(0, 16) + '...'
-            }
+            message: 'User deleted successfully'
         });
 
     } catch (error) {
-        console.error('Error blocking device:', error);
+        console.error('Error deleting user:', error);
         res.status(500).json({
             success: false,
-            message: 'Error blocking device'
+            message: 'Error deleting user'
         });
     }
 });
 
-// Unblock a device
-router.post('/unblock-device', async (req, res) => {
+// Get subscription analytics
+router.get('/subscriptions/analytics', async (req, res) => {
     try {
-        const { deviceFingerprint } = req.body;
+        const analytics = await generateSubscriptionAnalytics();
+        res.json({
+            success: true,
+            data: analytics
+        });
+    } catch (error) {
+        console.error('Error generating subscription analytics:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error generating subscription analytics'
+        });
+    }
+});
+
+// Subscription list (alias for subscription analytics)
+router.get('/subscriptions', async (req, res) => {
+    try {
+        const analytics = await generateSubscriptionAnalytics();
         
-        if (!deviceFingerprint) {
-            return res.status(400).json({
-                success: false,
-                message: 'Device fingerprint is required'
-            });
-        }
-
-        const result = await User.updateMany(
-            { deviceFingerprint, subscriptionStatus: 'blocked' },
-            { 
-                subscriptionStatus: 'trial',
-                $push: {
-                    securityNotes: {
-                        action: 'device_unblocked',
-                        reason: 'Manual admin action',
-                        timestamp: new Date()
-                    }
-                }
-            }
-        );
+        // Get recent subscriptions
+        const recentSubscriptions = await User.find({ subscriptionStatus: 'active' })
+            .sort({ updatedAt: -1 })
+            .limit(10)
+            .select('email displayName subscriptionStatus subscriptionExpiry createdAt');
 
         res.json({
             success: true,
-            message: `Unblocked ${result.modifiedCount} users on this device`,
             data: {
-                modifiedCount: result.modifiedCount,
-                deviceFingerprint: deviceFingerprint.substring(0, 16) + '...'
+                ...analytics,
+                recentSubscriptions
             }
         });
-
     } catch (error) {
-        console.error('Error unblocking device:', error);
+        console.error('Error fetching subscriptions:', error);
         res.status(500).json({
             success: false,
-            message: 'Error unblocking device'
-        });
-    }
-});
-
-// Get security metrics dashboard
-router.get('/security-dashboard', async (req, res) => {
-    try {
-        const dashboard = await generateSecurityDashboard();
-        res.json({
-            success: true,
-            data: dashboard
-        });
-    } catch (error) {
-        console.error('Error generating security dashboard:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error generating security dashboard'
+            message: 'Error fetching subscriptions'
         });
     }
 });
 
 /**
- * Generate trial abuse statistics
+ * Generate user statistics
  */
-async function generateTrialAbuseStats() {
+async function generateUserStats() {
     const now = new Date();
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Total users and device counts
+    // Basic counts
     const totalUsers = await User.countDocuments();
-    const uniqueDevices = await User.distinct('deviceFingerprint').then(arr => arr.length);
-
-    // Trial abuse metrics
-    const usersWithTrialAbuse = await User.countDocuments({ trialBypassAttempts: { $gt: 0 } });
-    const blockedUsers = await User.countDocuments({ subscriptionStatus: 'blocked' });
-    const highRiskUsers = await User.countDocuments({ securityRiskLevel: 'high' });
+    const activeSubscriptions = await User.countDocuments({ isSubscriptionActive: true });
+    const trialUsers = await User.countDocuments({ trialDaysRemaining: { $gt: 0 } });
+    const expiredUsers = await User.countDocuments({ 
+        subscriptionExpiry: { $lt: now },
+        isSubscriptionActive: false 
+    });
 
     // Recent activity
     const newUsersToday = await User.countDocuments({ createdAt: { $gte: oneDayAgo } });
-    const activeUsersToday = await User.countDocuments({ lastActiveDate: { $gte: oneDayAgo } });
+    const newUsersThisWeek = await User.countDocuments({ createdAt: { $gte: oneWeekAgo } });
+    const newUsersThisMonth = await User.countDocuments({ createdAt: { $gte: oneMonthAgo } });
 
-    // Trial bypass attempts in last week
-    const recentTrialAbuse = await User.aggregate([
-        { $match: { updatedAt: { $gte: oneWeekAgo } } },
-        { $group: { _id: null, totalAttempts: { $sum: '$trialBypassAttempts' } } }
+    // Subscription status distribution
+    const subscriptionDistribution = await User.aggregate([
+        { $group: { _id: '$subscriptionStatus', count: { $sum: 1 } } }
     ]);
 
-    // Device reuse patterns
-    const deviceReuseStats = await User.aggregate([
-        { $group: { _id: '$deviceFingerprint', userCount: { $sum: 1 } } },
-        { $match: { userCount: { $gt: 1 } } },
-        { $group: { _id: null, reusedDevices: { $sum: 1 }, totalReuseCount: { $sum: '$userCount' } } }
-    ]);
-
-    // Security risk distribution
-    const riskDistribution = await User.aggregate([
-        { $group: { _id: '$securityRiskLevel', count: { $sum: 1 } } }
+    // Platform usage
+    const platformUsage = await User.aggregate([
+        { $group: { 
+            _id: null, 
+            totalYoutube: { $sum: '$platformUsage.youtube' },
+            totalInstagram: { $sum: '$platformUsage.instagram' },
+            totalFacebook: { $sum: '$platformUsage.facebook' },
+            totalScrolls: { $sum: '$totalScrolls' }
+        }}
     ]);
 
     return {
         overview: {
             totalUsers,
-            uniqueDevices,
-            deviceReuseRatio: uniqueDevices > 0 ? (totalUsers / uniqueDevices).toFixed(2) : 0,
-            usersWithTrialAbuse,
-            blockedUsers,
-            highRiskUsers
+            activeSubscriptions,
+            trialUsers,
+            expiredUsers,
+            conversionRate: totalUsers > 0 ? ((activeSubscriptions / totalUsers) * 100).toFixed(2) : 0
         },
-        recentActivity: {
+        growth: {
             newUsersToday,
-            activeUsersToday,
-            trialAbuseAttemptsThisWeek: recentTrialAbuse[0]?.totalAttempts || 0
+            newUsersThisWeek,
+            newUsersThisMonth
         },
-        deviceReuse: {
-            reusedDevices: deviceReuseStats[0]?.reusedDevices || 0,
-            totalReuseCount: deviceReuseStats[0]?.totalReuseCount || 0
-        },
-        securityRisks: {
-            distribution: riskDistribution.reduce((acc, item) => {
+        subscriptions: {
+            distribution: subscriptionDistribution.reduce((acc, item) => {
                 acc[item._id || 'unknown'] = item.count;
                 return acc;
             }, {})
+        },
+        usage: platformUsage[0] || {
+            totalYoutube: 0,
+            totalInstagram: 0,
+            totalFacebook: 0,
+            totalScrolls: 0
         },
         generatedAt: now
     };
 }
 
 /**
- * Generate comprehensive security dashboard
+ * Generate subscription analytics
  */
-async function generateSecurityDashboard() {
-    const trialStats = await generateTrialAbuseStats();
-    
-    // Top devices by abuse attempts
-    const topAbusers = await User.aggregate([
-        { $match: { trialBypassAttempts: { $gt: 0 } } },
-        { $group: { 
-            _id: '$deviceFingerprint', 
-            totalAttempts: { $sum: '$trialBypassAttempts' },
-            userCount: { $sum: 1 },
-            lastActivity: { $max: '$lastActiveDate' }
-        }},
-        { $sort: { totalAttempts: -1 } },
-        { $limit: 10 }
-    ]);
+async function generateSubscriptionAnalytics() {
+    const now = new Date();
+    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // Recent blocked devices
-    const recentBlocks = await User.find({ 
-        subscriptionStatus: 'blocked',
-        updatedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-    })
-    .sort({ updatedAt: -1 })
-    .limit(10)
-    .select('deviceFingerprint userId updatedAt trialBypassAttempts securityRiskLevel');
+    // Revenue metrics (if you have payment data)
+    const activeSubscriptions = await User.countDocuments({ isSubscriptionActive: true });
+    const expiringSubscriptions = await User.countDocuments({ 
+        subscriptionExpiry: { $gte: now, $lte: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) },
+        isSubscriptionActive: true 
+    });
 
-    // Geographic distribution (if IP data available)
-    const ipDistribution = await User.aggregate([
-        { $match: { lastSeenIP: { $exists: true, $ne: null } } },
-        { $group: { 
-            _id: { $substr: ['$lastSeenIP', 0, 7] }, // First 7 chars of IP for privacy
-            count: { $sum: 1 }
-        }},
-        { $sort: { count: -1 } },
-        { $limit: 10 }
-    ]);
+    // Trial conversion metrics
+    const totalTrialUsers = await User.countDocuments({ subscriptionStatus: 'trial' });
+    const convertedUsers = await User.countDocuments({ 
+        subscriptionStatus: 'active',
+        createdAt: { $gte: oneMonthAgo }
+    });
+
+    // Churn analysis
+    const expiredThisMonth = await User.countDocuments({
+        subscriptionExpiry: { $gte: oneMonthAgo, $lt: now },
+        isSubscriptionActive: false
+    });
 
     return {
-        trialAbuseStats: trialStats,
-        topAbusers: topAbusers.map(device => ({
-            deviceId: device._id.substring(0, 16) + '...',
-            attempts: device.totalAttempts,
-            userCount: device.userCount,
-            lastActivity: device.lastActivity
-        })),
-        recentBlocks: recentBlocks.map(user => ({
-            deviceId: user.deviceFingerprint.substring(0, 16) + '...',
-            userId: user.userId,
-            blockedAt: user.updatedAt,
-            attempts: user.trialBypassAttempts,
-            riskLevel: user.securityRiskLevel
-        })),
-        ipDistribution: ipDistribution.map(ip => ({
-            ipPrefix: ip._id,
-            userCount: ip.count
-        }))
+        active: {
+            totalActive: activeSubscriptions,
+            expiringThisWeek: expiringSubscriptions
+        },
+        conversion: {
+            totalTrialUsers,
+            convertedUsers,
+            conversionRate: totalTrialUsers > 0 ? ((convertedUsers / totalTrialUsers) * 100).toFixed(2) : 0
+        },
+        churn: {
+            expiredThisMonth,
+            churnRate: activeSubscriptions > 0 ? ((expiredThisMonth / (activeSubscriptions + expiredThisMonth)) * 100).toFixed(2) : 0
+        },
+        generatedAt: now
     };
 }
 

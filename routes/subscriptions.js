@@ -2,29 +2,13 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 
-// Test connection endpoint
-router.get('/test', (req, res) => {
-    res.status(200).json({
-        success: true,
-        message: 'Subscriptions service is running correctly',
-        timestamp: new Date().toISOString()
-    });
-});
-
-// Check subscription status
-router.post('/check-subscription', async (req, res) => {
+// Get user subscriptions
+router.get('/user/:userId', async (req, res) => {
     try {
-        const { userId } = req.body;
-
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'User ID is required'
-            });
-        }
-
-        const user = await User.findOne({ userId });
-
+        const { userId } = req.params;
+        
+        const user = await User.findById(userId).select('subscriptionStatus isSubscriptionActive subscriptionExpiry trialDaysRemaining trialEndDate hasAutoRenewal');
+        
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -35,19 +19,132 @@ router.post('/check-subscription', async (req, res) => {
         res.json({
             success: true,
             data: {
+                userId,
                 subscriptionStatus: user.subscriptionStatus,
-                isActive: user.isSubscriptionActive,
-                expiryDate: user.subscriptionExpiry,
-                trialDaysRemaining: user.trialDaysRemaining
+                isSubscriptionActive: user.isSubscriptionActive,
+                subscriptionExpiry: user.subscriptionExpiry,
+                trialDaysRemaining: user.trialDaysRemaining,
+                trialEndDate: user.trialEndDate,
+                hasAutoRenewal: user.hasAutoRenewal
             }
         });
     } catch (error) {
+        console.error('Error fetching user subscriptions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching subscription data',
+            error: error.message
+        });
+    }
+});
+
+// Get subscription status
+router.get('/status/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Calculate if trial is still active
+        const now = new Date();
+        const trialEndDate = user.trialEndDate;
+        const isTrialActive = trialEndDate && now < trialEndDate;
+        const trialDaysRemaining = isTrialActive ? Math.ceil((trialEndDate - now) / (24 * 60 * 60 * 1000)) : 0;
+
+        const canUseExtension = user.isSubscriptionActive || isTrialActive;
+
+        res.json({
+            success: true,
+            data: {
+                userId,
+                subscriptionStatus: user.subscriptionStatus,
+                isSubscriptionActive: user.isSubscriptionActive,
+                canUseExtension,
+                trialDaysRemaining,
+                isTrialActive,
+                trialEndDate: user.trialEndDate,
+                subscriptionExpiry: user.subscriptionExpiry
+            }
+        });
+    } catch (error) {
+        console.error('Error checking subscription status:', error);
         res.status(500).json({
             success: false,
             message: 'Error checking subscription status',
             error: error.message
         });
     }
+});
+
+// Activate subscription
+router.post('/activate', async (req, res) => {
+    try {
+        const { userId, subscriptionType = 'monthly', paymentMethod } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Activate subscription
+        const subscriptionExpiry = new Date();
+        subscriptionExpiry.setMonth(subscriptionExpiry.getMonth() + 1); // 1 month subscription
+
+        user.subscriptionStatus = 'active';
+        user.isSubscriptionActive = true;
+        user.subscriptionExpiry = subscriptionExpiry;
+        user.hasAutoRenewal = true;
+        user.updatedAt = new Date();
+
+        await user.save();
+
+        res.json({
+            success: true,
+            data: {
+                userId,
+                subscriptionStatus: user.subscriptionStatus,
+                isSubscriptionActive: user.isSubscriptionActive,
+                subscriptionExpiry: user.subscriptionExpiry,
+                subscriptionType,
+                paymentMethod
+            },
+            message: 'Subscription activated successfully'
+        });
+    } catch (error) {
+        console.error('Error activating subscription:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error activating subscription',
+            error: error.message
+        });
+    }
+});
+
+// Test connection endpoint
+router.get('/test', (req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'Subscriptions service is running correctly',
+        timestamp: new Date().toISOString()
+    });
 });
 
 // Cancel subscription

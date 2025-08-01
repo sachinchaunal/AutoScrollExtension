@@ -1,35 +1,77 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-    userId: {
+    // Google Authentication Data
+    googleId: {
         type: String,
         required: true,
         unique: true,
         index: true
     },
-    deviceFingerprint: {
-        type: String,
-        required: true,
-        index: true
-    },
     email: {
         type: String,
-        sparse: true
-    },
-    trialStartDate: {
-        type: Date,
         required: true,
+        unique: true,
+        lowercase: true,
+        index: true
+    },
+    name: {
+        type: String,
+        required: true
+    },
+    picture: {
+        type: String // Google profile picture URL
+    },
+    verified_email: {
+        type: Boolean,
+        default: false
+    },
+
+    // Authentication & Security
+    authToken: {
+        type: String
+    },
+    authTokenExpiry: {
+        type: Date
+    },
+    lastLoginDate: {
+        type: Date,
         default: Date.now
     },
-    trialActivatedDate: {
+    lastActiveDate: {
         type: Date,
-        required: true,
         default: Date.now
     },
+    loginCount: {
+        type: Number,
+        default: 0
+    },
+
+    // Trial & Subscription
     subscriptionStatus: {
         type: String,
         enum: ['trial', 'active', 'expired', 'cancelled', 'blocked'],
         default: 'trial'
+    },
+    trialDaysRemaining: {
+        type: Number,
+        default: 10
+    },
+    trialStartDate: {
+        type: Date,
+        default: Date.now
+    },
+    trialEndDate: {
+        type: Date
+    },
+    isTrialActive: {
+        type: Boolean,
+        default: true
+    },
+    
+    // Subscription Management
+    subscriptionStartDate: {
+        type: Date
     },
     subscriptionExpiry: {
         type: Date
@@ -37,147 +79,116 @@ const userSchema = new mongoose.Schema({
     lastPaymentDate: {
         type: Date
     },
-    hasAutoRenewal: {
+    autoPayEnabled: {
         type: Boolean,
         default: false
     },
-    upiMandateId: {
-        type: String,
-        sparse: true // Only for users with active mandates
+
+    // User Settings
+    settings: {
+        autoScrollEnabled: {
+            type: Boolean,
+            default: false
+        },
+        platform: {
+            type: String,
+            default: 'youtube'
+        },
+        notifications: {
+            type: Boolean,
+            default: true
+        },
+        autoScrollSpeed: {
+            type: String,
+            enum: ['slow', 'normal', 'fast'],
+            default: 'normal'
+        }
     },
 
-    payments: [{
-        transactionId: String,
+    // Extension Data
+    extensionVersion: {
+        type: String
+    },
+    usageStats: {
+        totalScrolls: {
+            type: Number,
+            default: 0
+        },
+        lastUsedDate: {
+            type: Date
+        },
+        averageDaily: {
+            type: Number,
+            default: 0
+        }
+    },
+
+    // Payment Related
+    razorpayCustomerId: {
+        type: String
+    },
+    upiMandateId: {
+        type: String
+    },
+    paymentHistory: [{
+        paymentId: String,
         amount: Number,
         currency: String,
         status: String,
-        razorpayPaymentId: String,
-        date: { type: Date, default: Date.now }
+        date: Date,
+        method: String
     }],
-    settings: {
-        autoScrollEnabled: { type: Boolean, default: false },
-        preferredPlatform: { type: String, default: 'youtube' },
-        scrollDelay: { type: Number, default: 2000 }
-    },
-    // Device and security tracking
-    deviceInfo: {
-        browser: String,
-        os: String,
-        screenResolution: String,
-        timezone: String,
-        language: String
-    },
-    // Enhanced security tracking
-    securityFingerprint: {
-        behavioral: String,
-        network: String,
-        installation: String,
-        composite: String,
-        timestamp: Date
-    },
-    securityRiskLevel: {
-        type: String,
-        enum: ['low', 'medium', 'high'],
-        default: 'low'
-    },
-    // Enhanced device fingerprinting
-    deviceFingerprints: {
-        main: String, // Primary device fingerprint
-        hardwareId: String, // Hardware-based identifier
-        machineId: String, // Machine-level unique identifier (NEW)
-        browserUniqueId: String, // Browser-specific unique identifier (NEW)
-        installationId: String, // Installation-specific identifier
-        fingerprintVersion: String, // Version of fingerprinting system
-        context: String, // Context where fingerprint was generated (popup, background, etc.)
-        createdAt: Date,
-        updatedAt: Date
-    },
-    robustFingerprintData: {
-        version: String,
-        context: String,
-        hasMachineId: Boolean,
-        hasHardwareId: Boolean,
-        hasBrowserUniqueId: Boolean,
-        hasInstallationId: Boolean,
-        timestamp: Date,
-        isReinstall: Boolean,
-        // Additional metadata for robust tracking
-        fingerprintComponents: {
-            machine: String,
-            hardware: String,
-            browser: String,
-            system: String
-        }
-    },
-    // Activity tracking
-    lastActiveDate: {
+
+    // Metadata
+    createdAt: {
         type: Date,
         default: Date.now
     },
-    lastSeenIP: String,
-    installationAttempts: {
-        type: Number,
-        default: 1
-    },
-    // Trial abuse prevention
-    isTrialUsed: {
-        type: Boolean,
-        default: true
-    },
-    trialBypassAttempts: {
-        type: Number,
-        default: 0
-    },
-    // Usage analytics
-    totalScrolls: {
-        type: Number,
-        default: 0
-    },
-    platformUsage: {
-        youtube: { type: Number, default: 0 },
-        instagram: { type: Number, default: 0 },
-        facebook: { type: Number, default: 0 }
-    },
-    // Backend verification
-    lastVerificationDate: {
+    updatedAt: {
         type: Date,
         default: Date.now
-    },
-    verificationToken: String,
-
-    // Security notes for admin tracking
-    securityNotes: [{
-        action: String,
-        reason: String,
-        timestamp: { type: Date, default: Date.now },
-        adminId: String
-    }]
-}, {
-    timestamps: true
+    }
 });
 
-// Calculate trial days remaining
-userSchema.virtual('trialDaysRemaining').get(function() {
-    if (this.subscriptionStatus !== 'trial') return 0;
-    
-    const now = new Date();
-    const trialDuration = 10 * 24 * 60 * 60 * 1000; // 10 days
-    const elapsed = now - this.trialActivatedDate;
-    const remaining = trialDuration - elapsed;
-    
-    return Math.max(0, Math.ceil(remaining / (24 * 60 * 60 * 1000)));
+// Indexes for performance
+userSchema.index({ googleId: 1 });
+userSchema.index({ email: 1 });
+userSchema.index({ subscriptionStatus: 1 });
+userSchema.index({ trialEndDate: 1 });
+userSchema.index({ subscriptionExpiry: 1 });
+
+// Update the updatedAt field before saving
+userSchema.pre('save', function(next) {
+    this.updatedAt = Date.now();
+    next();
 });
 
-// Check if subscription is active
+// Virtual for checking if subscription is active
 userSchema.virtual('isSubscriptionActive').get(function() {
+    if (this.subscriptionStatus === 'active' && this.subscriptionExpiry) {
+        return new Date() < this.subscriptionExpiry;
+    }
+    
+    if (this.subscriptionStatus === 'trial' && this.trialDaysRemaining > 0) {
+        return true;
+    }
+    
+    return false;
+});
+
+// Virtual for checking if user can use extension
+userSchema.virtual('canUseExtension').get(function() {
+    // Blocked users cannot use extension
     if (this.subscriptionStatus === 'blocked') {
         return false;
     }
     
-    if (this.subscriptionStatus === 'active') {
-        return this.subscriptionExpiry ? this.subscriptionExpiry > new Date() : true;
+    // Active subscription
+    if (this.subscriptionStatus === 'active' && this.subscriptionExpiry) {
+        return new Date() < this.subscriptionExpiry;
     }
     
+    // Active trial
     if (this.subscriptionStatus === 'trial') {
         return this.trialDaysRemaining > 0;
     }
@@ -185,50 +196,196 @@ userSchema.virtual('isSubscriptionActive').get(function() {
     return false;
 });
 
+// Virtual for days until subscription expires
+userSchema.virtual('daysUntilExpiry').get(function() {
+    let expiryDate;
+    
+    if (this.subscriptionStatus === 'trial' && this.trialEndDate) {
+        expiryDate = this.trialEndDate;
+    } else if (this.subscriptionStatus === 'active' && this.subscriptionExpiry) {
+        expiryDate = this.subscriptionExpiry;
+    } else {
+        return 0;
+    }
+    
+    const now = new Date();
+    const diffTime = expiryDate - now;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return Math.max(0, diffDays);
+});
 
+// Instance Methods
 
-userSchema.methods.generateVerificationToken = function() {
+/**
+ * Generate authentication token
+ */
+userSchema.methods.generateAuthToken = function() {
     const token = Math.random().toString(36).substr(2, 15) + Date.now().toString(36);
-    this.verificationToken = token;
-    this.lastVerificationDate = new Date();
+    this.authToken = token;
+    this.authTokenExpiry = new Date(Date.now() + (24 * 60 * 60 * 1000)); // 24 hours
     return token;
 };
 
-userSchema.methods.isVerificationTokenValid = function(token, maxAgeMinutes = 60) {
-    if (!this.verificationToken || this.verificationToken !== token) {
+/**
+ * Verify authentication token
+ */
+userSchema.methods.verifyAuthToken = function(token) {
+    if (!this.authToken || this.authToken !== token) {
         return false;
     }
     
-    const tokenAge = Date.now() - this.lastVerificationDate.getTime();
-    const maxAge = maxAgeMinutes * 60 * 1000;
+    if (!this.authTokenExpiry || new Date() > this.authTokenExpiry) {
+        return false;
+    }
     
-    return tokenAge <= maxAge;
+    return true;
 };
 
-// Static methods
-userSchema.statics.findByDeviceFingerprint = function(deviceFingerprint) {
-    return this.findOne({ deviceFingerprint });
+/**
+ * Start premium subscription
+ */
+userSchema.methods.activateSubscription = function(durationMonths = 1) {
+    this.subscriptionStatus = 'active';
+    this.subscriptionStartDate = new Date();
+    this.subscriptionExpiry = new Date(Date.now() + (durationMonths * 30 * 24 * 60 * 60 * 1000));
+    this.lastPaymentDate = new Date();
+    this.isTrialActive = false;
+    
+    console.log(`User ${this.email} subscription activated until ${this.subscriptionExpiry}`);
 };
 
-userSchema.statics.checkTrialAbuse = function(deviceFingerprint) {
-    return this.findOne({ 
-        deviceFingerprint, 
-        isTrialUsed: true 
+/**
+ * Cancel subscription
+ */
+userSchema.methods.cancelSubscription = function() {
+    this.subscriptionStatus = 'cancelled';
+    this.autoPayEnabled = false;
+    
+    console.log(`User ${this.email} subscription cancelled`);
+};
+
+/**
+ * Update trial days remaining
+ */
+userSchema.methods.updateTrialDays = function() {
+    if (this.subscriptionStatus !== 'trial' || !this.trialEndDate) {
+        this.trialDaysRemaining = 0;
+        return;
+    }
+    
+    const now = new Date();
+    const diffTime = this.trialEndDate - now;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    this.trialDaysRemaining = Math.max(0, diffDays);
+    
+    // Mark trial as inactive if expired
+    if (this.trialDaysRemaining <= 0) {
+        this.isTrialActive = false;
+        this.subscriptionStatus = 'expired';
+    }
+};
+
+/**
+ * Record usage activity
+ */
+userSchema.methods.recordUsage = function() {
+    this.lastActiveDate = new Date();
+    this.usageStats.lastUsedDate = new Date();
+    this.usageStats.totalScrolls = (this.usageStats.totalScrolls || 0) + 1;
+    
+    // Calculate average daily usage (simplified)
+    const daysSinceCreation = Math.max(1, Math.floor((Date.now() - this.createdAt) / (1000 * 60 * 60 * 24)));
+    this.usageStats.averageDaily = this.usageStats.totalScrolls / daysSinceCreation;
+};
+
+/**
+ * Add payment to history
+ */
+userSchema.methods.addPayment = function(paymentData) {
+    this.paymentHistory.push({
+        paymentId: paymentData.paymentId,
+        amount: paymentData.amount,
+        currency: paymentData.currency || 'INR',
+        status: paymentData.status,
+        date: new Date(),
+        method: paymentData.method || 'upi'
+    });
+    
+    if (paymentData.status === 'paid' || paymentData.status === 'success') {
+        this.lastPaymentDate = new Date();
+    }
+};
+
+// Static Methods
+
+/**
+ * Find user by Google ID
+ */
+userSchema.statics.findByGoogleId = function(googleId) {
+    return this.findOne({ googleId });
+};
+
+/**
+ * Find user by email
+ */
+userSchema.statics.findByEmail = function(email) {
+    return this.findOne({ email: email.toLowerCase() });
+};
+
+/**
+ * Get users with expiring trials (for notifications)
+ */
+userSchema.statics.getExpiringTrials = function(daysThreshold = 3) {
+    const thresholdDate = new Date(Date.now() + (daysThreshold * 24 * 60 * 60 * 1000));
+    
+    return this.find({
+        subscriptionStatus: 'trial',
+        trialEndDate: { $lt: thresholdDate },
+        trialDaysRemaining: { $gt: 0 }
     });
 };
 
-// Indexes for performance
-userSchema.index({ userId: 1 });
-userSchema.index({ deviceFingerprint: 1 });
-userSchema.index({ subscriptionExpiry: 1 });
-userSchema.index({ lastActiveDate: 1 });
-userSchema.index({ verificationToken: 1 });
-userSchema.index({ isTrialUsed: 1, deviceFingerprint: 1 });
-// Robust fingerprinting indexes
-userSchema.index({ 'deviceFingerprints.hardwareId': 1 });
-userSchema.index({ 'deviceFingerprints.machineId': 1 });
-userSchema.index({ 'deviceFingerprints.browserUniqueId': 1 });
-userSchema.index({ 'robustFingerprintData.hasMachineId': 1 });
-userSchema.index({ 'robustFingerprintData.hasHardwareId': 1 });
+/**
+ * Get expired users
+ */
+userSchema.statics.getExpiredUsers = function() {
+    return this.find({
+        $or: [
+            { 
+                subscriptionStatus: 'trial',
+                trialDaysRemaining: { $lte: 0 }
+            },
+            {
+                subscriptionStatus: 'active',
+                subscriptionExpiry: { $lt: new Date() }
+            }
+        ]
+    });
+};
+
+/**
+ * Get subscription statistics
+ */
+userSchema.statics.getSubscriptionStats = async function() {
+    const stats = await this.aggregate([
+        {
+            $group: {
+                _id: '$subscriptionStatus',
+                count: { $sum: 1 },
+                avgTrialDays: { $avg: '$trialDaysRemaining' }
+            }
+        }
+    ]);
+    
+    const totalUsers = await this.countDocuments();
+    
+    return {
+        totalUsers,
+        statusBreakdown: stats,
+        timestamp: new Date()
+    };
+};
 
 module.exports = mongoose.model('User', userSchema);
