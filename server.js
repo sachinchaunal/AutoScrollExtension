@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cron = require('node-cron');
+const path = require('path');
 require('dotenv').config();
 
 const connectDB = require('./config/database');
@@ -38,6 +39,9 @@ const CONFIG = {
 if (CONFIG.nodeEnv === 'production') {
     app.set('trust proxy', true);
 }
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Validate configuration before starting
 console.log('🔧 Starting AutoScroll Backend Server...\n');
@@ -150,6 +154,74 @@ app.get('/test-dashboard', (req, res) => {
             message: 'Error loading test dashboard',
             error: error.message
         });
+    }
+});
+
+// Serve admin dashboard with environment configuration
+app.get('/admin-dashboard', (req, res) => {
+    try {
+        const path = require('path');
+        const fs = require('fs');
+        const dashboardPath = path.join(__dirname, 'admin-dashboard.html');
+        
+        if (!fs.existsSync(dashboardPath)) {
+            return res.status(404).json({
+                success: false,
+                message: 'Admin dashboard file not found'
+            });
+        }
+        
+        let htmlContent = fs.readFileSync(dashboardPath, 'utf8');
+        
+        // Replace template variables with actual environment values
+        htmlContent = htmlContent.replace(/{{API_BASE_URL}}/g, CONFIG.apiBaseUrl);
+        htmlContent = htmlContent.replace(/{{NODE_ENV}}/g, CONFIG.nodeEnv);
+        
+        res.setHeader('Content-Type', 'text/html');
+        res.send(htmlContent);
+    } catch (error) {
+        console.error('Error serving admin dashboard:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error loading admin dashboard',
+            error: error.message
+        });
+    }
+});
+
+// OAuth callback route for cross-browser authentication
+app.get('/auth/callback', (req, res) => {
+    try {
+        const fs = require('fs');
+        const callbackPath = path.join(__dirname, 'public', 'auth-callback.html');
+        
+        if (!fs.existsSync(callbackPath)) {
+            return res.status(404).send(`
+                <!DOCTYPE html>
+                <html>
+                <head><title>Auth Callback</title></head>
+                <body>
+                    <h1>Authentication Complete</h1>
+                    <p>You can close this window.</p>
+                    <script>
+                        try {
+                            const urlParams = new URLSearchParams(window.location.hash.substring(1));
+                            const token = urlParams.get('access_token');
+                            if (token && window.opener) {
+                                window.opener.postMessage({type: 'GOOGLE_AUTH_SUCCESS', token: token}, '*');
+                            }
+                            setTimeout(() => window.close(), 2000);
+                        } catch(e) { console.error(e); }
+                    </script>
+                </body>
+                </html>
+            `);
+        }
+        
+        res.sendFile(callbackPath);
+    } catch (error) {
+        console.error('Error serving auth callback:', error);
+        res.status(500).send('Authentication callback error');
     }
 });
 

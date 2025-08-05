@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication Complete</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        .success {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .message {
+            font-size: 16px;
+            opacity: 0.9;
+            margin-bottom: 30px;
+        }
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="success">✅ Authentication Successful!</div>
+        <div class="message">You can now close this window and return to the extension.</div>
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        // Extract token from URL and send to parent window
+        try {
+            const urlParams = new URLSearchParams(window.location.hash.substring(1));
+            const token = urlParams.get('access_token');
+            const error = urlParams.get('error');
+
+            if (token) {
+                // Send success message to parent window (extension)
+                if (window.opener) {
+                    window.opener.postMessage({
+                        type: 'GOOGLE_AUTH_SUCCESS',
+                        token: token
+                    }, '*');
+                }
+                
+                // Auto-close after 2 seconds
+                setTimeout(() => {
+                    window.close();
+                }, 2000);
+                
+            } else if (error) {
+                // Send error message to parent window
+                if (window.opener) {
+                    window.opener.postMessage({
+                        type: 'GOOGLE_AUTH_ERROR',
+                        error: error
+                    }, '*');
+                }
+                
+                document.querySelector('.success').textContent = '❌ Authentication Failed';
+                document.querySelector('.message').textContent = 'Please try again.';
+                document.querySelector('.spinner').style.display = 'none';
+                
+                setTimeout(() => {
+                    window.close();
+                }, 3000);
+            }
+        } catch (e) {
+            console.error('Auth callback error:', e);
+            if (window.opener) {
+                window.opener.postMessage({
+                    type: 'GOOGLE_AUTH_ERROR',
+                    error: 'Failed to process authentication response'
+                }, '*');
+            }
+        }
+    </script>
+</body>
+</html>

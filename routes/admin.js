@@ -281,6 +281,235 @@ router.get('/subscriptions', async (req, res) => {
     }
 });
 
+// Security dashboard route for trial abuse monitoring
+router.get('/security-dashboard', async (req, res) => {
+    try {
+        // Get trial abuse statistics
+        const trialAbuseStats = await generateTrialAbuseStats();
+        
+        // Get top abusers (devices with multiple users)
+        const topAbusers = await getTopAbusers();
+        
+        // Get recent blocks
+        const recentBlocks = await getRecentBlocks();
+
+        res.json({
+            success: true,
+            data: {
+                trialAbuseStats,
+                topAbusers,
+                recentBlocks
+            }
+        });
+    } catch (error) {
+        console.error('Error generating security dashboard:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error generating security dashboard',
+            error: error.message
+        });
+    }
+});
+
+// High risk users endpoint
+router.get('/high-risk-users', async (req, res) => {
+    try {
+        const highRiskUsers = await User.find({
+            $or: [
+                { trialBypassAttempts: { $gt: 1 } },
+                { securityRiskLevel: 'high' },
+                { subscriptionStatus: 'blocked' }
+            ]
+        })
+        .select('userId deviceFingerprint securityRiskLevel trialBypassAttempts subscriptionStatus lastActiveDate')
+        .sort({ trialBypassAttempts: -1, lastActiveDate: -1 })
+        .limit(50);
+
+        res.json({
+            success: true,
+            data: {
+                users: highRiskUsers,
+                count: highRiskUsers.length
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching high risk users:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching high risk users',
+            error: error.message
+        });
+    }
+});
+
+// Block device endpoint
+router.post('/block-device', async (req, res) => {
+    try {
+        const { deviceFingerprint, reason } = req.body;
+        
+        if (!deviceFingerprint) {
+            return res.status(400).json({
+                success: false,
+                message: 'Device fingerprint is required'
+            });
+        }
+
+        const result = await User.updateMany(
+            { deviceFingerprint },
+            { 
+                subscriptionStatus: 'blocked',
+                blockReason: reason || 'Admin action',
+                blockedAt: new Date(),
+                updatedAt: new Date()
+            }
+        );
+
+        res.json({
+            success: true,
+            message: `Blocked ${result.modifiedCount} users on device`,
+            data: {
+                modifiedCount: result.modifiedCount,
+                deviceFingerprint
+            }
+        });
+    } catch (error) {
+        console.error('Error blocking device:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error blocking device',
+            error: error.message
+        });
+    }
+});
+
+// Unblock device endpoint
+router.post('/unblock-device', async (req, res) => {
+    try {
+        const { deviceFingerprint } = req.body;
+        
+        if (!deviceFingerprint) {
+            return res.status(400).json({
+                success: false,
+                message: 'Device fingerprint is required'
+            });
+        }
+
+        const result = await User.updateMany(
+            { deviceFingerprint, subscriptionStatus: 'blocked' },
+            { 
+                subscriptionStatus: 'trial',
+                $unset: { blockReason: '', blockedAt: '' },
+                updatedAt: new Date()
+            }
+        );
+
+        res.json({
+            success: true,
+            message: `Unblocked ${result.modifiedCount} users on device`,
+            data: {
+                modifiedCount: result.modifiedCount,
+                deviceFingerprint
+            }
+        });
+    } catch (error) {
+        console.error('Error unblocking device:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error unblocking device',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Helper functions for security dashboard
+ */
+async function generateTrialAbuseStats() {
+    const totalUsers = await User.countDocuments();
+    const uniqueDevices = await User.distinct('deviceFingerprint').then(devices => devices.length);
+    const blockedUsers = await User.countDocuments({ subscriptionStatus: 'blocked' });
+    const highRiskUsers = await User.countDocuments({ 
+        $or: [
+            { trialBypassAttempts: { $gt: 1 } },
+            { securityRiskLevel: 'high' }
+        ]
+    });
+    
+    const deviceReuseRatio = totalUsers > 0 ? (totalUsers / uniqueDevices).toFixed(2) : 0;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const newUsersToday = await User.countDocuments({ 
+        createdAt: { $gte: today }
+    });
+
+    return {
+        overview: {
+            totalUsers,
+            uniqueDevices,
+            blockedUsers,
+            highRiskUsers,
+            deviceReuseRatio
+        },
+        recentActivity: {
+            newUsersToday
+        }
+    };
+}
+
+async function getTopAbusers() {
+    const abusers = await User.aggregate([
+        {
+            $group: {
+                _id: '$deviceFingerprint',
+                userCount: { $sum: 1 },
+                attempts: { $sum: '$trialBypassAttempts' },
+                lastActivity: { $max: '$lastActiveDate' }
+            }
+        },
+        {
+            $match: {
+                userCount: { $gt: 1 }
+            }
+        },
+        {
+            $sort: { attempts: -1, userCount: -1 }
+        },
+        {
+            $limit: 10
+        },
+        {
+            $project: {
+                deviceId: '$_id',
+                userCount: 1,
+                attempts: 1,
+                lastActivity: 1,
+                _id: 0
+            }
+        }
+    ]);
+
+    return abusers;
+}
+
+async function getRecentBlocks() {
+    const recentBlocks = await User.find({ 
+        subscriptionStatus: 'blocked',
+        blockedAt: { $exists: true }
+    })
+    .select('userId deviceFingerprint blockedAt trialBypassAttempts securityRiskLevel')
+    .sort({ blockedAt: -1 })
+    .limit(20);
+
+    return recentBlocks.map(block => ({
+        deviceId: block.deviceFingerprint,
+        userId: block.userId,
+        blockedAt: block.blockedAt,
+        attempts: block.trialBypassAttempts || 0,
+        riskLevel: block.securityRiskLevel || 'low'
+    }));
+}
+
 /**
  * Generate user statistics
  */

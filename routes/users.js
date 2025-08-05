@@ -39,6 +39,32 @@ router.get('/', async (req, res) => {
     }
 });
 
+// Test connection endpoint (must be before /:userId route)
+router.get('/test-connection', async (req, res) => {
+    try {
+        // Simple connectivity test
+        const userCount = await User.countDocuments();
+        
+        res.json({
+            success: true,
+            message: 'Backend connection successful',
+            data: {
+                status: 'online',
+                timestamp: new Date().toISOString(),
+                userCount: userCount,
+                environment: process.env.NODE_ENV || 'development'
+            }
+        });
+    } catch (error) {
+        console.error('Test connection error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Backend connection failed',
+            error: error.message
+        });
+    }
+});
+
 // Get user by ID
 router.get('/:userId', async (req, res) => {
     try {
