@@ -61,6 +61,53 @@ router.get('/dashboard', (req, res) => {
     }
 });
 
+// Dashboard stats (alias for root admin endpoint)
+router.get('/dashboard-stats', async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const activeSubscriptions = await User.countDocuments({ isSubscriptionActive: true });
+        const trialUsers = await User.countDocuments({ trialDaysRemaining: { $gt: 0 } });
+        const paidUsers = await User.countDocuments({ subscriptionStatus: 'active' });
+        
+        const totalScrolls = await User.aggregate([
+            { $group: { _id: null, total: { $sum: '$totalScrolls' } } }
+        ]);
+
+        // Additional stats for dashboard
+        const newUsersToday = await User.countDocuments({
+            createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+        });
+
+        const newUsersThisWeek = await User.countDocuments({
+            createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+        });
+
+        res.json({
+            success: true,
+            data: {
+                totalUsers,
+                activeSubscriptions,
+                trialUsers,
+                paidUsers,
+                totalScrolls: totalScrolls[0]?.total || 0,
+                newUsersToday,
+                newUsersThisWeek,
+                conversionRate: paidUsers > 0 && trialUsers > 0 
+                    ? ((paidUsers / (paidUsers + trialUsers)) * 100).toFixed(2) + '%'
+                    : '0%',
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching dashboard stats',
+            error: error.message
+        });
+    }
+});
+
 // Get user statistics
 router.get('/users/stats', async (req, res) => {
     try {

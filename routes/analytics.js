@@ -289,6 +289,116 @@ router.get('/payments', async (req, res) => {
     }
 });
 
+// Log usage analytics (alias for POST /)
+router.post('/log-usage', async (req, res) => {
+    try {
+        const { userId, feature, platform, metadata } = req.body;
+
+        if (!userId || !platform) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID and platform are required'
+            });
+        }
+
+        // Update user scroll count
+        const user = await User.findOne({ userId });
+        
+        if (user) {
+            user.totalScrolls += 1;
+            user.platformUsage[platform] = (user.platformUsage[platform] || 0) + 1;
+            
+            // Store additional metadata if provided
+            if (metadata) {
+                if (!user.usageMetadata) user.usageMetadata = [];
+                user.usageMetadata.push({
+                    feature: feature || 'autoscroll',
+                    platform,
+                    timestamp: new Date(),
+                    ...metadata
+                });
+                
+                // Keep only last 100 usage records to prevent document bloat
+                if (user.usageMetadata.length > 100) {
+                    user.usageMetadata = user.usageMetadata.slice(-100);
+                }
+            }
+            
+            await user.save();
+        }
+
+        res.json({
+            success: true,
+            message: 'Usage analytics logged successfully',
+            data: {
+                userId,
+                feature: feature || 'autoscroll',
+                platform,
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error logging usage analytics:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error logging usage analytics',
+            error: error.message
+        });
+    }
+});
+
+// Analytics stats (alias for root analytics)
+router.get('/stats', async (req, res) => {
+    try {
+        const totalUsers = await User.countDocuments();
+        const activeSubscriptions = await User.countDocuments({ isSubscriptionActive: true });
+        const trialUsers = await User.countDocuments({ trialDaysRemaining: { $gt: 0 } });
+        
+        const totalScrolls = await User.aggregate([
+            { $group: { _id: null, total: { $sum: '$totalScrolls' } } }
+        ]);
+
+        // Platform usage breakdown
+        const platformStats = await User.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    totalYoutube: { $sum: '$platformUsage.youtube' },
+                    totalInstagram: { $sum: '$platformUsage.instagram' },
+                    totalFacebook: { $sum: '$platformUsage.facebook' },
+                    totalScrolls: { $sum: '$totalScrolls' }
+                }
+            }
+        ]);
+
+        res.json({
+            success: true,
+            data: {
+                overview: {
+                    totalUsers,
+                    activeSubscriptions,
+                    trialUsers,
+                    totalScrolls: totalScrolls[0]?.total || 0
+                },
+                platformStats: platformStats[0] || {
+                    totalYoutube: 0,
+                    totalInstagram: 0,
+                    totalFacebook: 0,
+                    totalScrolls: 0
+                },
+                timestamp: new Date().toISOString()
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching analytics stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching analytics stats',
+            error: error.message
+        });
+    }
+});
+
 // Helper function to calculate conversion rate
 async function calculateConversionRate() {
     const totalTrialUsers = await User.countDocuments({ subscriptionStatus: 'trial' });
