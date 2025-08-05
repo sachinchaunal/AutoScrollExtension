@@ -57,11 +57,19 @@
     <script>
         // Extract token from URL and send to parent window
         try {
+            console.log('Auth callback page loaded');
+            console.log('Current URL:', window.location.href);
+            
             const urlParams = new URLSearchParams(window.location.hash.substring(1));
             const token = urlParams.get('access_token');
             const error = urlParams.get('error');
 
             if (token) {
+                console.log('Token found:', token.substring(0, 10) + '...');
+                
+                // Store token globally for script injection
+                window.extractedToken = token;
+                
                 // Send success message to parent window (extension)
                 if (window.opener) {
                     window.opener.postMessage({
@@ -70,12 +78,18 @@
                     }, '*');
                 }
                 
+                // Update UI
+                document.querySelector('.success').textContent = '✅ Authentication Successful!';
+                document.querySelector('.message').textContent = 'Token extracted. Closing window...';
+                
                 // Auto-close after 2 seconds
                 setTimeout(() => {
                     window.close();
                 }, 2000);
                 
             } else if (error) {
+                console.error('Auth error:', error);
+                
                 // Send error message to parent window
                 if (window.opener) {
                     window.opener.postMessage({
@@ -85,12 +99,52 @@
                 }
                 
                 document.querySelector('.success').textContent = '❌ Authentication Failed';
-                document.querySelector('.message').textContent = 'Please try again.';
+                document.querySelector('.message').textContent = 'Error: ' + error;
                 document.querySelector('.spinner').style.display = 'none';
                 
                 setTimeout(() => {
                     window.close();
                 }, 3000);
+            } else {
+                console.log('No token or error found, waiting...');
+                document.querySelector('.message').textContent = 'Processing authentication...';
+                
+                // Keep checking for token updates
+                const checkForToken = () => {
+                    const newParams = new URLSearchParams(window.location.hash.substring(1));
+                    const newToken = newParams.get('access_token');
+                    
+                    if (newToken) {
+                        console.log('Token found on retry:', newToken.substring(0, 10) + '...');
+                        window.extractedToken = newToken;
+                        
+                        if (window.opener) {
+                            window.opener.postMessage({
+                                type: 'GOOGLE_AUTH_SUCCESS',
+                                token: newToken
+                            }, '*');
+                        }
+                        
+                        document.querySelector('.success').textContent = '✅ Authentication Successful!';
+                        document.querySelector('.message').textContent = 'Token extracted. Closing window...';
+                        
+                        setTimeout(() => {
+                            window.close();
+                        }, 2000);
+                    }
+                };
+                
+                // Check periodically for token
+                setInterval(checkForToken, 1000);
+                
+                // Auto-close after 30 seconds if no token
+                setTimeout(() => {
+                    if (!window.extractedToken) {
+                        document.querySelector('.success').textContent = '⏰ Timeout';
+                        document.querySelector('.message').textContent = 'Authentication took too long. Please try again.';
+                        setTimeout(() => window.close(), 2000);
+                    }
+                }, 30000);
             }
         } catch (e) {
             console.error('Auth callback error:', e);
