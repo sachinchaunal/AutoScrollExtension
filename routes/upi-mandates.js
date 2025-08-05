@@ -82,6 +82,58 @@ router.get('/test', (req, res) => {
     });
 });
 
+// Test Razorpay configuration
+router.get('/test-razorpay', async (req, res) => {
+    try {
+        // Test basic Razorpay connectivity
+        const testPaymentLink = {
+            amount: 100, // ₹1 for testing
+            currency: 'INR',
+            accept_partial: false,
+            description: 'Test payment link',
+            customer: {
+                name: 'Test User',
+                contact: CONFIG.defaultCustomerPhone,
+                email: CONFIG.defaultCustomerEmail
+            },
+            notify: {
+                sms: false,
+                email: false
+            },
+            reminder_enable: false,
+            notes: {
+                test: 'true'
+            }
+        };
+
+        console.log('Testing Razorpay with config:', {
+            key_id: process.env.RAZORPAY_KEY_ID ? 'SET' : 'NOT SET',
+            key_secret: process.env.RAZORPAY_KEY_SECRET ? 'SET' : 'NOT SET'
+        });
+
+        const paymentLink = await razorpay.paymentLink.create(testPaymentLink);
+        
+        res.json({
+            success: true,
+            message: 'Razorpay is working correctly',
+            data: {
+                paymentLinkId: paymentLink.id,
+                shortUrl: paymentLink.short_url,
+                amount: paymentLink.amount
+            }
+        });
+
+    } catch (error) {
+        console.error('Razorpay test error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Razorpay test failed',
+            error: error.message,
+            details: error.error || null
+        });
+    }
+});
+
 // UPI Mandate configuration (legacy - keeping for backward compatibility)
 const UPI_CONFIG = {
     merchantVpa: CONFIG.merchantVpa,
@@ -173,6 +225,12 @@ router.post('/create-mandate', async (req, res) => {
         };
 
         console.log('Creating Razorpay payment link with options:', paymentLinkOptions);
+        console.log('Razorpay config:', {
+            key_id: process.env.RAZORPAY_KEY_ID ? 'SET' : 'NOT SET',
+            key_secret: process.env.RAZORPAY_KEY_SECRET ? 'SET' : 'NOT SET',
+            plan_id: process.env.RAZORPAY_PLAN_ID
+        });
+        
         const paymentLink = await razorpay.paymentLink.create(paymentLinkOptions);
         
         console.log('Payment link created:', paymentLink);
