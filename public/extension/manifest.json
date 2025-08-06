@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "Autoscroll Extension For Youtube Shorts",
+  "version": "1.0.0",
+  "description": "Auto-scroll through YouTube Shorts when videos finish playing - Never miss the next short!",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "notifications",
+    "alarms",
+    "tabs",
+    "identity"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://youtube.com/*",
+    "https://autoscrollextension.onrender.com/*",
+    "https://checkout.razorpay.com/*",
+    "https://api.razorpay.com/*",
+    "https://www.googleapis.com/*",
+    "https://oauth2.googleapis.com/*",
+    "https://accounts.google.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*"],
+      "js": ["content-scripts/youtube.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "YouTube Shorts AutoScroll"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "oauth2": {
+    "client_id": "635885285423-c84krdm83jhqvmjvqb7g6pncsup4gdc6.apps.googleusercontent.com",
+    "scopes": ["openid", "email", "profile"]
+  }
+}

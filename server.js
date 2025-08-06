@@ -2,6 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const cron = require('node-cron');
 const path = require('path');
 require('dotenv').config();
@@ -18,6 +20,8 @@ const cleanupRoutes = require('./routes/cleanup');
 const upiMandateRoutes = require('./routes/upi-mandates');
 const deviceVerificationRoutes = require('./routes/device-verification');
 const { router: trialManagementRoutes } = require('./routes/trial-management');
+const websiteRoutes = require('./routes/website');
+const webAuthRoutes = require('./routes/web-auth');
 
 const app = express();
 
@@ -115,8 +119,24 @@ app.use(limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Session configuration for web authentication
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'autoscroll-session-secret',
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: process.env.MONGODB_URI || 'mongodb://localhost:27017/autoscroll'
+    }),
+    cookie: {
+        secure: CONFIG.nodeEnv === 'production',
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
+
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/auth', webAuthRoutes); // Web-based authentication
 app.use('/api/users', userRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
@@ -126,6 +146,37 @@ app.use('/api/cleanup', cleanupRoutes);
 app.use('/api/upi-mandates', upiMandateRoutes);
 app.use('/api/device', deviceVerificationRoutes);
 app.use('/api/trials', trialManagementRoutes);
+app.use('/api', websiteRoutes);
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve frontend website (for Razorpay verification)
+app.get('/', (req, res) => {
+    try {
+        const path = require('path');
+        const fs = require('fs');
+        const frontendPath = path.join(__dirname, 'public', 'index.html');
+        
+        if (!fs.existsSync(frontendPath)) {
+            return res.status(404).send(`
+                <!DOCTYPE html>
+                <html><head><title>AutoScroll Extension</title></head>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <h1>🚀 AutoScroll Extension</h1>
+                    <p>Official website for Chrome extension</p>
+                    <p><strong>Status:</strong> Under Development</p>
+                    <p><em>Frontend file not found at: ${frontendPath}</em></p>
+                </body></html>
+            `);
+        }
+        
+        res.sendFile(frontendPath);
+    } catch (error) {
+        console.error('Error serving frontend:', error);
+        res.status(500).send('Error loading website');
+    }
+});
 
 // Serve test dashboard with environment configuration
 app.get('/test-dashboard', (req, res) => {
@@ -227,8 +278,11 @@ app.get('/auth/callback', (req, res) => {
     }
 });
 
-// Root endpoint
-app.get('/', (req, res) => {
+// Root endpoint - removed duplicate route
+// The main website is served by the static file middleware above
+
+// API status endpoint
+app.get('/api/status', (req, res) => {
     res.status(200).json({
         success: true,
         message: 'AutoScroll Extension Backend API',
@@ -237,6 +291,7 @@ app.get('/', (req, res) => {
         timestamp: new Date().toISOString(),
         endpoints: {
             health: '/health',
+            status: '/api/status',
             auth: '/api/auth',
             users: '/api/users',
             payments: '/api/payments',
@@ -244,7 +299,9 @@ app.get('/', (req, res) => {
             upiMandates: '/api/upi-mandates',
             analytics: '/api/analytics',
             admin: '/api/admin',
-            cleanup: '/api/cleanup'
+            cleanup: '/api/cleanup',
+            trials: '/api/trials',
+            website: '/api (contact, support, downloads)'
         }
     });
 });

@@ -1,0 +1,10 @@
+<!-- YouTube Shorts AutoScroll Extension 128x128 Icon -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" fill="#ffffff" rx="16" stroke="#007acc" stroke-width="4"/>
+  <text x="64" y="90" text-anchor="middle" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="#007acc">A</text>
+  <text x="64" y="112" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="normal" fill="#666">YouTube Shorts</text>
+  <circle cx="100" cy="28" r="12" fill="#007acc"/>
+  <path d="M94 28h12M100 22v12" stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <!-- Small decorative arrows to suggest scrolling -->
+  <path d="M20 40l8-8 8 8M20 50l8-8 8 8" stroke="#007acc" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+</svg>

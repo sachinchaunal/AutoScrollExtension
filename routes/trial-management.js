@@ -64,10 +64,20 @@ router.post('/update-all-trials', async (req, res) => {
     }
 });
 
-// Get trial status for specific user
+// Get trial status for specific user (by ID or email)
 router.get('/trial-status/:userId', async (req, res) => {
     try {
-        const user = await User.findById(req.params.userId);
+        const { userId } = req.params;
+        
+        // Try to find user by MongoDB ObjectId first, then by email
+        let user;
+        if (userId.match(/^[0-9a-fA-F]{24}$/)) {
+            // It's a valid MongoDB ObjectId
+            user = await User.findById(userId);
+        } else {
+            // Assume it's an email address
+            user = await User.findOne({ email: userId });
+        }
         
         if (!user) {
             return res.status(404).json({ success: false, error: 'User not found' });
@@ -94,10 +104,20 @@ router.get('/trial-status/:userId', async (req, res) => {
     }
 });
 
-// Check if user can use extension features
+// Check if user can use extension features (by ID or email)
 router.get('/check-access/:userId', async (req, res) => {
     try {
-        const user = await User.findById(req.params.userId);
+        const { userId } = req.params;
+        
+        // Try to find user by MongoDB ObjectId first, then by email
+        let user;
+        if (userId.match(/^[0-9a-fA-F]{24}$/)) {
+            // It's a valid MongoDB ObjectId
+            user = await User.findById(userId);
+        } else {
+            // Assume it's an email address
+            user = await User.findOne({ email: userId });
+        }
         
         if (!user) {
             return res.status(404).json({ 

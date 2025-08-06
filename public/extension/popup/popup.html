@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Shorts AutoScroll</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Login Screen -->
+        <div class="login-screen" id="loginScreen">
+            <div class="header">
+                <h2>YouTube Shorts AutoScroll</h2>
+                <p class="subtitle">Auto-scroll through YouTube Shorts seamlessly</p>
+            </div>
+            
+            <div class="login-content">
+                <div class="feature-highlights">
+                    <div class="feature">
+                        <span class="icon">⏭️</span>
+                        <span>Auto-scroll when videos end</span>
+                    </div>
+                    <div class="feature">
+                        <span class="icon">⏱️</span>
+                        <span>10-day free trial</span>
+                    </div>
+                    <div class="feature">
+                        <span class="icon">💳</span>
+                        <span>Only ₹9/month after trial</span>
+                    </div>
+                </div>
+
+                <div class="auth-buttons">
+                    <button id="googleLoginBtn" class="btn btn-google">
+                        <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjY0IDkuMjA0NTVDMTcuNjQgOC41NjY4MiAxNy41ODI3IDcuOTUyMjcgMTcuNDggNy4zNjM2NEg5VjEwLjg0NTVIMTMuODQzNkMxMy42MzUgMTEuOTcgMTMuMDAwOSAxMi45MjMgMTIuMDQ3NyAxMy41NjE0VjE1LjgxOTVIMTQuOTU2OEMxNi42NTkxIDE0LjI1MjMgMTcuNjQgMTEuOTQ1NSAxNy42NCA5LjIwNDU1WiIgZmlsbD0iIzQyODVGNCIvPgo8cGF0aCBkPSJNOSAxOEM4LjQxIDEwIDkuMDE4IDExLjA1IDEwIDExLjA1SDEwLjQ1QzEwLjk1IDExLjA1IDExLjQgMTAuNjUgMTEuNCAxMC4xNVY5LjQ1SDEyLjZWMTAuMTVDMTIuNiAxMS4zNSAxMS43IDEyLjI1IDEwLjQ1IDEyLjI1SDEwQzguNzUgMTIuMjUgNy43NSAxMS4yNSA3Ljc1IDEwVjNIMTBWMTBIMTEuNCIgZmlsbD0iIzM0QTg1MyIvPgo8L3N2Zz4K" alt="Google" />
+                        Sign in with Google
+                    </button>
+                    
+                    <div class="auth-info">
+                        <p>🔒 Secure Google authentication</p>
+                        <p>✨ Start your free trial instantly</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main App Screen -->
+        <div class="main-screen" id="mainScreen" style="display: none;">
+            <div class="header">
+                <div class="user-info">
+                    <img id="userPicture" src="" alt="User" class="user-avatar">
+                    <div class="user-details">
+                        <span id="userName" class="user-name">Loading...</span>
+                        <span id="userEmail" class="user-email">Loading...</span>
+                    </div>
+                </div>
+                <button id="logoutBtn" class="btn btn-logout">Logout</button>
+            </div>
+
+            <div class="status-section">
+                <div class="status-indicator" id="statusIndicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Inactive</span>
+                </div>
+            </div>
+
+            <div class="controls">
+                <button id="toggleButton" class="btn btn-primary">Start AutoScroll</button>
+            </div>
+
+            <div class="subscription-info" id="subscriptionInfo">
+                <div class="trial-info" id="trialInfo">
+                    <h3>Free Trial</h3>
+                    <p id="trialDays">Loading...</p>
+                    <div class="progress-bar">
+                        <div class="progress" id="trialProgress"></div>
+                    </div>
+                </div>
+
+                <div class="subscription-status" id="subscriptionStatus" style="display: none;">
+                    <h3>Premium Plan</h3>
+                    <p id="subscriptionText">Active subscription</p>
+                </div>
+
+                <div class="expired-notice" id="expiredNotice" style="display: none;">
+                    <h3>Trial Expired</h3>
+                    <p>Subscribe to continue using YouTube Shorts AutoScroll</p>
+                </div>
+
+                <button id="subscribeButton" class="btn btn-secondary">Subscribe to Premium</button>
+            </div>
+
+            <!-- Payment Modal -->
+        <div class="payment-modal" id="paymentModal" style="display: none;">
+            <div class="modal-content">
+                <span class="close" id="closeModal">&times;</span>
+                <h3>Subscribe to Premium AutoScroll</h3>
+                <p>₹9/month - Unlimited auto-scrolling with automatic renewal</p>
+                
+                <div class="payment-options">
+                    <div class="autopay-setup">
+                        <h4>🔄 AutoPay Subscription Setup</h4>
+                        <p style="color: #666; font-size: 14px; margin: 10px 0;">Set up automatic monthly payments for uninterrupted premium access</p>
+                        
+                        <div class="autopay-benefits">
+                            <ul>
+                                <li>✓ Automatic monthly renewal (₹9/month)</li>
+                                <li>✓ Never lose access to premium features</li>
+                                <li>✓ Cancel anytime from this extension</li>
+                                <li>✓ Secure UPI autopay mandate</li>
+                                <li>✓ Instant activation after setup</li>
+                            </ul>
+                        </div>
+                        
+                        <div class="upi-input-section" id="upiInputSection">
+                            <label for="userUpiId">Enter your UPI ID for autopay setup:</label>
+                            <input type="text" id="userUpiId" placeholder="yourname@paytm" required>
+                            <small>We'll create a secure autopay mandate for ₹9/month recurring payment</small>
+                            <button id="createMandateBtn" class="btn btn-primary">Setup AutoPay Subscription</button>
+                        </div>
+
+                        <div class="mandate-qr-section" id="mandateQrSection" style="display: none;">
+                            <h4>📱 Scan QR to Complete Subscription</h4>
+                            <div id="mandateQrCode"></div>
+                            <div class="qr-section-buttons">
+                                <button id="checkMandateStatus" class="btn btn-secondary">Check Subscription Status</button>
+                            </div>
+                        </div>
+
+                        <div class="mandate-status" id="mandateStatus" style="display: none;">
+                            <div class="status-card">
+                                <h4 id="mandateStatusTitle">Subscription Status</h4>
+                                <p id="mandateStatusText">Checking...</p>
+                                <div id="mandateDetails" class="mandate-details"></div>
+                                <div class="status-actions">
+                                    <button id="cancelMandateBtn" class="btn btn-danger" style="display: none;">Cancel AutoPay</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading Screen -->
+        <div class="loading-screen" id="loadingScreen" style="display: none;">
+            <div class="spinner"></div>
+            <p>Loading...</p>
+        </div>
+
+        <div class="footer">
+            <p class="version">v1.0.0</p>
+        </div>
+    </div>
+
+    <script src="../utils/googleAuth.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>
