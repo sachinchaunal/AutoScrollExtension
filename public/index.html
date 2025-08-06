@@ -1094,7 +1094,12 @@
                     <small style="color: #666;">Enter your UPI ID (e.g., yourname@paytm, yourname@googlepay)</small>
                 </div>
 
-                <button onclick="createWebUpiMandate()" class="submit-btn" style="width: 100%; margin-top: 20px;">
+                <!-- Test button for debugging -->
+                <button type="button" onclick="alert('Test button works!'); console.log('Test button clicked');" style="width: 100%; padding: 10px; margin: 10px 0; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    🧪 Test Button (Debug)
+                </button>
+
+                <button id="createMandateBtn" type="button" class="submit-btn" style="width: 100%; margin-top: 20px; cursor: pointer;">
                     🔄 Create AutoPay Subscription
                 </button>
             </div>
@@ -1967,80 +1972,201 @@
         }
 
         async function createWebUpiMandate() {
-            const upiId = document.getElementById('userUpiId').value.trim();
+            console.log('🔄 Create AutoPay Subscription function called!');
             
-            if (!upiId) {
-                alert('Please enter a valid UPI ID');
-                return;
-            }
-
-            if (!isValidUpiId(upiId)) {
-                alert('Please enter a valid UPI ID (e.g., yourname@paytm)');
-                return;
-            }
-
             try {
-                showSubscriptionLoading(true);
-
-                const authData = localStorage.getItem('webAutoScrollAuth');
-                if (!authData) {
-                    throw new Error('Please log in first');
+                // Get UPI ID
+                const upiInput = document.getElementById('userUpiId');
+                if (!upiInput) {
+                    throw new Error('UPI input field not found');
+                }
+                
+                const upiId = upiInput.value.trim();
+                console.log('UPI ID entered:', upiId);
+                
+                if (!upiId) {
+                    alert('Please enter a valid UPI ID');
+                    upiInput.focus();
+                    return;
                 }
 
-                const parsed = JSON.parse(authData);
-                const response = await fetch(`${window.location.origin}/api/upi-mandates/create-mandate`, {
+                if (!isValidUpiId(upiId)) {
+                    alert('Please enter a valid UPI ID (e.g., yourname@paytm)');
+                    upiInput.focus();
+                    return;
+                }
+
+                console.log('UPI ID validation passed');
+                console.log('Showing loading...');
+                showSubscriptionLoading(true);
+
+                // Get authentication data
+                const authData = localStorage.getItem('webAutoScrollAuth');
+                console.log('Auth data from localStorage:', !!authData);
+                
+                if (!authData) {
+                    throw new Error('Please log in first to create subscription');
+                }
+
+                let parsed;
+                try {
+                    parsed = JSON.parse(authData);
+                    console.log('Parsed auth data - userId:', parsed.userId, 'hasToken:', !!parsed.token);
+                } catch (parseError) {
+                    console.error('Failed to parse auth data:', parseError);
+                    throw new Error('Invalid authentication data. Please log in again.');
+                }
+                
+                if (!parsed.userId || !parsed.token) {
+                    throw new Error('Incomplete authentication data. Please log in again.');
+                }
+
+                // Use the current origin for API calls (works for both localhost and deployed)
+                const apiUrl = `${window.location.origin}/api/upi-mandates/create-mandate`;
+                console.log('API URL:', apiUrl);
+                
+                const requestBody = {
+                    userId: parsed.userId,
+                    userUpiId: upiId,
+                    amount: 9
+                };
+                console.log('Request body:', requestBody);
+                
+                const requestOptions = {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${parsed.token}`
                     },
-                    body: JSON.stringify({
-                        userId: parsed.userId,
-                        userUpiId: upiId,
-                        amount: 9
-                    })
-                });
+                    body: JSON.stringify(requestBody)
+                };
+                console.log('Making API request...');
+
+                const response = await fetch(apiUrl, requestOptions);
+                console.log('Response received - status:', response.status, 'ok:', response.ok);
+
+                if (!response.ok) {
+                    let errorMessage = `HTTP ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || errorData.error || errorMessage;
+                    } catch (e) {
+                        const errorText = await response.text();
+                        errorMessage = errorText || errorMessage;
+                    }
+                    console.error('API response error:', errorMessage);
+                    throw new Error(`Server error: ${errorMessage}`);
+                }
 
                 const result = await response.json();
+                console.log('API response data:', result);
                 
                 if (result.success) {
+                    console.log('Mandate creation successful!');
+                    
                     if (result.data.qrCodeImage && result.data.paymentUrl) {
+                        console.log('Showing QR code for new mandate...');
                         showMandateQRCode(result.data);
                     } else if (result.data.mandateId) {
-                        // Existing mandate found
+                        console.log('Showing existing mandate...');
                         showExistingMandateFromResult(result.data);
+                    } else {
+                        console.log('Unexpected response format:', result.data);
+                        throw new Error('Unexpected server response format');
                     }
                 } else {
-                    throw new Error(result.message || 'Failed to create mandate');
+                    throw new Error(result.message || result.error || 'Failed to create mandate');
                 }
 
             } catch (error) {
                 console.error('Mandate creation error:', error);
                 alert('Failed to create subscription: ' + error.message);
             } finally {
+                console.log('Hiding loading...');
                 showSubscriptionLoading(false);
             }
         }
 
+        // Make functions globally available
+        window.createWebUpiMandate = createWebUpiMandate;
+        window.closeSubscriptionModal = closeSubscriptionModal;
+        window.handleCreateMandate = handleCreateMandate;
+        
+        // Debug information
+        console.log('🚀 AutoScroll Website JavaScript Loaded');
+        console.log('Available functions:', {
+            createWebUpiMandate: typeof window.createWebUpiMandate,
+            closeSubscriptionModal: typeof window.closeSubscriptionModal,
+            handleCreateMandate: typeof window.handleCreateMandate
+        });
+        
+        // Check if elements exist when page loads
+        setTimeout(() => {
+            console.log('🔍 Checking for subscription modal elements...');
+            console.log('Elements check:', {
+                subscriptionModal: !!document.getElementById('subscriptionModal'),
+                createMandateBtn: !!document.getElementById('createMandateBtn'),
+                userUpiId: !!document.getElementById('userUpiId'),
+                upiInputSection: !!document.getElementById('upiInputSection'),
+                mandateQrSection: !!document.getElementById('mandateQrSection'),
+                subscriptionLoading: !!document.getElementById('subscriptionLoading')
+            });
+        }, 1000);
+
         function showMandateQRCode(mandateData) {
+            console.log('showMandateQRCode called with:', mandateData);
+            
             const upiSection = document.getElementById('upiInputSection');
             const qrSection = document.getElementById('mandateQrSection');
             const qrContainer = document.getElementById('qrCodeContainer');
             const paymentLink = document.getElementById('paymentLink');
 
-            if (upiSection) upiSection.style.display = 'none';
-            if (qrSection) qrSection.style.display = 'block';
+            console.log('QR Elements found:', {
+                upiSection: !!upiSection,
+                qrSection: !!qrSection,
+                qrContainer: !!qrContainer,
+                paymentLink: !!paymentLink
+            });
 
-            if (qrContainer && mandateData.qrCodeImage) {
-                qrContainer.innerHTML = `<img src="${mandateData.qrCodeImage}" alt="UPI QR Code" style="max-width: 100%; height: auto;">`;
+            // Hide UPI input section
+            if (upiSection) {
+                upiSection.style.display = 'none';
+                console.log('Hidden UPI section');
+            }
+            
+            // Show QR section
+            if (qrSection) {
+                qrSection.style.display = 'block';
+                console.log('Showing QR section');
+            } else {
+                console.error('QR section not found!');
+                return;
             }
 
+            // Set QR code image
+            if (qrContainer && mandateData.qrCodeImage) {
+                qrContainer.innerHTML = `<img src="${mandateData.qrCodeImage}" alt="UPI QR Code" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 8px;">`;
+                console.log('QR code image set');
+            } else {
+                console.error('QR container not found or no QR image data');
+            }
+
+            // Set payment link
             if (paymentLink && mandateData.paymentUrl) {
                 paymentLink.href = mandateData.paymentUrl;
+                paymentLink.target = '_blank';
+                console.log('Payment link set:', mandateData.paymentUrl);
+            } else {
+                console.error('Payment link element not found or no payment URL');
             }
 
             // Start checking mandate status
-            checkMandateStatusPeriodically(mandateData.mandateId);
+            if (mandateData.mandateId) {
+                console.log('Starting mandate status checking for ID:', mandateData.mandateId);
+                checkMandateStatusPeriodically(mandateData.mandateId);
+            } else {
+                console.error('No mandate ID provided for status checking');
+            }
         }
 
         function showExistingMandateFromResult(mandateData) {
@@ -2150,18 +2276,55 @@
         }
 
         function showSubscriptionLoading(show) {
+            console.log('showSubscriptionLoading called with:', show);
+            
             const upiSection = document.getElementById('upiInputSection');
             const qrSection = document.getElementById('mandateQrSection');
             const statusSection = document.getElementById('mandateStatus');
             const loadingSection = document.getElementById('subscriptionLoading');
 
+            console.log('Elements found:', {
+                upiSection: !!upiSection,
+                qrSection: !!qrSection, 
+                statusSection: !!statusSection,
+                loadingSection: !!loadingSection
+            });
+
             if (show) {
-                if (upiSection) upiSection.style.display = 'none';
-                if (qrSection) qrSection.style.display = 'none';
-                if (statusSection) statusSection.style.display = 'none';
-                if (loadingSection) loadingSection.style.display = 'block';
+                // Hide all other sections
+                if (upiSection) {
+                    upiSection.style.display = 'none';
+                    console.log('Hidden UPI section');
+                }
+                if (qrSection) {
+                    qrSection.style.display = 'none';
+                    console.log('Hidden QR section');
+                }
+                if (statusSection) {
+                    statusSection.style.display = 'none';
+                    console.log('Hidden status section');
+                }
+                
+                // Show loading
+                if (loadingSection) {
+                    loadingSection.style.display = 'block';
+                    console.log('Showing loading section');
+                } else {
+                    console.error('Loading section not found!');
+                }
             } else {
-                if (loadingSection) loadingSection.style.display = 'none';
+                // Hide loading
+                if (loadingSection) {
+                    loadingSection.style.display = 'none';
+                    console.log('Hidden loading section');
+                }
+                
+                // Show UPI section again if no other section is visible
+                if (upiSection && (!qrSection || qrSection.style.display === 'none') && 
+                    (!statusSection || statusSection.style.display === 'none')) {
+                    upiSection.style.display = 'block';
+                    console.log('Showing UPI section again');
+                }
             }
         }
 
@@ -2227,6 +2390,43 @@
                 observer.observe(card);
             });
         });
+
+        // Add event listener for the Create AutoPay Subscription button
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, setting up event listeners...');
+            
+            const createMandateBtn = document.getElementById('createMandateBtn');
+            if (createMandateBtn) {
+                console.log('Create mandate button found, adding event listener...');
+                
+                // Remove any existing listeners
+                createMandateBtn.removeEventListener('click', handleCreateMandate);
+                
+                // Add new listener
+                createMandateBtn.addEventListener('click', handleCreateMandate);
+                
+                // Also add onclick as fallback
+                createMandateBtn.onclick = handleCreateMandate;
+                
+                console.log('Event listeners added successfully');
+            } else {
+                console.error('Create mandate button not found!');
+            }
+        });
+
+        // Separate handler function for better debugging
+        function handleCreateMandate(e) {
+            console.log('🔄 Button clicked! Event:', e);
+            e.preventDefault();
+            e.stopPropagation();
+            
+            try {
+                createWebUpiMandate();
+            } catch (error) {
+                console.error('Error calling createWebUpiMandate:', error);
+                alert('Error: ' + error.message);
+            }
+        }
     </script>
 </body>
 </html>
