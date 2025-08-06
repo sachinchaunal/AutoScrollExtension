@@ -606,6 +606,90 @@
                 gap: 15px;
             }
         }
+
+        /* Subscription Modal Styles */
+        .subscription-section {
+            margin: 20px 0;
+        }
+
+        .autopay-benefits ul {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        #qrCodeContainer img {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 10px;
+            background: white;
+        }
+
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            border-left: 4px solid #27ae60;
+        }
+
+        .status-card.pending {
+            border-left-color: #f39c12;
+        }
+
+        .status-card.error {
+            border-left-color: #e74c3c;
+        }
+
+        .mandate-details {
+            background: #fff;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border: 1px solid #e0e0e0;
+        }
+
+        .mandate-id {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            word-break: break-all;
+            font-size: 12px;
+        }
+
+        .subscription-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .subscription-actions button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .btn-success {
+            background: #27ae60;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -964,6 +1048,82 @@
                 
                 <h4>8. Contact</h4>
                 <p>Questions about terms: <strong>sachinchaunal@gmail.com</strong></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Subscription Modal -->
+    <div id="subscriptionModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <span class="close" onclick="closeSubscriptionModal()">&times;</span>
+            <h2>🚀 Subscribe to Premium AutoScroll</h2>
+            <p style="text-align: center; color: #666; margin-bottom: 30px;">₹9/month - Unlimited auto-scrolling with automatic renewal</p>
+            
+            <!-- UPI Input Section -->
+            <div id="upiInputSection" class="subscription-section">
+                <h3>🔄 Set Up AutoPay Subscription</h3>
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px;">
+                    Set up automatic monthly payments for uninterrupted premium access
+                </p>
+                
+                <div class="autopay-benefits" style="margin: 20px 0;">
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="padding: 8px 0; display: flex; align-items: center;">
+                            <span style="color: #27ae60; margin-right: 10px;">✓</span>
+                            Automatic monthly renewal (₹9/month)
+                        </li>
+                        <li style="padding: 8px 0; display: flex; align-items: center;">
+                            <span style="color: #27ae60; margin-right: 10px;">✓</span>
+                            Never lose access to premium features
+                        </li>
+                        <li style="padding: 8px 0; display: flex; align-items: center;">
+                            <span style="color: #27ae60; margin-right: 10px;">✓</span>
+                            Cancel anytime from website or extension
+                        </li>
+                        <li style="padding: 8px 0; display: flex; align-items: center;">
+                            <span style="color: #27ae60; margin-right: 10px;">✓</span>
+                            Secure UPI autopay mandate
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="form-group">
+                    <label for="userUpiId">Your UPI ID *</label>
+                    <input type="text" id="userUpiId" placeholder="yourname@paytm" 
+                           style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px;">
+                    <small style="color: #666;">Enter your UPI ID (e.g., yourname@paytm, yourname@googlepay)</small>
+                </div>
+
+                <button onclick="createWebUpiMandate()" class="submit-btn" style="width: 100%; margin-top: 20px;">
+                    🔄 Create AutoPay Subscription
+                </button>
+            </div>
+
+            <!-- QR Code Section -->
+            <div id="mandateQrSection" class="subscription-section" style="display: none;">
+                <h3>📱 Scan QR Code to Setup AutoPay</h3>
+                <div style="text-align: center; margin: 20px 0;">
+                    <div id="qrCodeContainer" style="margin: 20px auto; max-width: 300px;"></div>
+                    <p style="color: #666; margin: 10px 0;">Scan this QR code with any UPI app</p>
+                    <div id="paymentLinkSection" style="margin: 20px 0;">
+                        <a id="paymentLink" href="#" target="_blank" class="submit-btn" style="display: inline-block; text-decoration: none;">
+                            📱 Open Payment Link
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Section -->
+            <div id="mandateStatus" class="subscription-section" style="display: none;">
+                <div id="statusContent">
+                    <!-- Dynamic status content will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Loading -->
+            <div id="subscriptionLoading" style="display: none; text-align: center; padding: 40px;">
+                <div class="web-spinner"></div>
+                <p>Setting up your subscription...</p>
             </div>
         </div>
     </div>
@@ -1485,8 +1645,129 @@
             }
 
             openSubscriptionModal() {
-                // Redirect to subscription page or open modal
-                this.showNotification('Subscription', 'Subscription management coming soon! For now, please contact support.');
+                // Open the subscription modal instead of showing placeholder
+                this.showSubscriptionModal();
+            }
+
+            showSubscriptionModal() {
+                const modal = document.getElementById('subscriptionModal');
+                if (modal) {
+                    modal.style.display = 'block';
+                    this.resetSubscriptionModal();
+                    this.checkForExistingMandates();
+                }
+            }
+
+            resetSubscriptionModal() {
+                // Show UPI input section by default
+                const upiSection = document.getElementById('upiInputSection');
+                const qrSection = document.getElementById('mandateQrSection');
+                const statusSection = document.getElementById('mandateStatus');
+                const loadingSection = document.getElementById('subscriptionLoading');
+
+                if (upiSection) upiSection.style.display = 'block';
+                if (qrSection) qrSection.style.display = 'none';
+                if (statusSection) statusSection.style.display = 'none';
+                if (loadingSection) loadingSection.style.display = 'none';
+
+                // Clear form
+                const upiInput = document.getElementById('userUpiId');
+                if (upiInput) upiInput.value = '';
+            }
+
+            async checkForExistingMandates() {
+                try {
+                    const authData = localStorage.getItem('webAutoScrollAuth');
+                    if (!authData) return;
+
+                    const parsed = JSON.parse(authData);
+                    const response = await fetch(`${this.API_BASE}/api/upi-mandates/status/${parsed.userId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${parsed.token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success && result.data.hasMandate) {
+                            this.showExistingMandateStatus(result.data);
+                        }
+                    }
+                } catch (error) {
+                    console.log('Could not check existing mandates:', error);
+                }
+            }
+
+            showExistingMandateStatus(mandateData) {
+                const upiSection = document.getElementById('upiInputSection');
+                const statusSection = document.getElementById('mandateStatus');
+                const statusContent = document.getElementById('statusContent');
+
+                if (upiSection) upiSection.style.display = 'none';
+                if (statusSection) statusSection.style.display = 'block';
+
+                let statusClass = 'status-card';
+                let statusIcon = '🔄';
+                let statusText = 'Active';
+                let actions = '';
+
+                switch (mandateData.status) {
+                    case 'ACTIVE':
+                        statusClass += ' success';
+                        statusIcon = '✅';
+                        statusText = 'Active';
+                        actions = `
+                            <div class="subscription-actions">
+                                <button class="btn-danger" onclick="cancelMandate('${mandateData.mandateId}')">
+                                    Cancel Subscription
+                                </button>
+                            </div>
+                        `;
+                        break;
+                    case 'PENDING':
+                        statusClass += ' pending';
+                        statusIcon = '⏳';
+                        statusText = 'Pending Setup';
+                        actions = `
+                            <div class="subscription-actions">
+                                <button class="btn-success" onclick="checkMandateStatus('${mandateData.mandateId}')">
+                                    Check Status
+                                </button>
+                                <button class="btn-secondary" onclick="showMandateQR('${mandateData.mandateId}')">
+                                    Show QR Code
+                                </button>
+                            </div>
+                        `;
+                        break;
+                    case 'CANCELLED':
+                        statusClass += ' error';
+                        statusIcon = '❌';
+                        statusText = 'Cancelled';
+                        actions = `
+                            <div class="subscription-actions">
+                                <button class="btn-success" onclick="createNewMandate()">
+                                    Create New Subscription
+                                </button>
+                            </div>
+                        `;
+                        break;
+                }
+
+                if (statusContent) {
+                    statusContent.innerHTML = `
+                        <div class="${statusClass}">
+                            <h4>${statusIcon} Subscription Status: ${statusText}</h4>
+                            <div class="mandate-details">
+                                <p><strong>Mandate ID:</strong></p>
+                                <p class="mandate-id">${mandateData.mandateId}</p>
+                                <p><strong>Amount:</strong> ₹${mandateData.amount || 9}/month</p>
+                                <p><strong>Status:</strong> ${mandateData.status}</p>
+                                ${mandateData.nextChargeDate ? `<p><strong>Next Charge:</strong> ${new Date(mandateData.nextChargeDate).toLocaleDateString()}</p>` : ''}
+                            </div>
+                            ${actions}
+                        </div>
+                    `;
+                }
             }
 
             updateUI() {
@@ -1674,8 +1955,253 @@
 
         // Initialize Web AutoScroll when page loads
         document.addEventListener('DOMContentLoaded', () => {
-            new WebAutoScroll();
+            window.webAutoScrollInstance = new WebAutoScroll();
         });
+
+        // Global subscription functions
+        function closeSubscriptionModal() {
+            const modal = document.getElementById('subscriptionModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        async function createWebUpiMandate() {
+            const upiId = document.getElementById('userUpiId').value.trim();
+            
+            if (!upiId) {
+                alert('Please enter a valid UPI ID');
+                return;
+            }
+
+            if (!isValidUpiId(upiId)) {
+                alert('Please enter a valid UPI ID (e.g., yourname@paytm)');
+                return;
+            }
+
+            try {
+                showSubscriptionLoading(true);
+
+                const authData = localStorage.getItem('webAutoScrollAuth');
+                if (!authData) {
+                    throw new Error('Please log in first');
+                }
+
+                const parsed = JSON.parse(authData);
+                const response = await fetch(`${window.location.origin}/api/upi-mandates/create-mandate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${parsed.token}`
+                    },
+                    body: JSON.stringify({
+                        userId: parsed.userId,
+                        userUpiId: upiId,
+                        amount: 9
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    if (result.data.qrCodeImage && result.data.paymentUrl) {
+                        showMandateQRCode(result.data);
+                    } else if (result.data.mandateId) {
+                        // Existing mandate found
+                        showExistingMandateFromResult(result.data);
+                    }
+                } else {
+                    throw new Error(result.message || 'Failed to create mandate');
+                }
+
+            } catch (error) {
+                console.error('Mandate creation error:', error);
+                alert('Failed to create subscription: ' + error.message);
+            } finally {
+                showSubscriptionLoading(false);
+            }
+        }
+
+        function showMandateQRCode(mandateData) {
+            const upiSection = document.getElementById('upiInputSection');
+            const qrSection = document.getElementById('mandateQrSection');
+            const qrContainer = document.getElementById('qrCodeContainer');
+            const paymentLink = document.getElementById('paymentLink');
+
+            if (upiSection) upiSection.style.display = 'none';
+            if (qrSection) qrSection.style.display = 'block';
+
+            if (qrContainer && mandateData.qrCodeImage) {
+                qrContainer.innerHTML = `<img src="${mandateData.qrCodeImage}" alt="UPI QR Code" style="max-width: 100%; height: auto;">`;
+            }
+
+            if (paymentLink && mandateData.paymentUrl) {
+                paymentLink.href = mandateData.paymentUrl;
+            }
+
+            // Start checking mandate status
+            checkMandateStatusPeriodically(mandateData.mandateId);
+        }
+
+        function showExistingMandateFromResult(mandateData) {
+            // Access the global webAutoScroll instance
+            if (window.webAutoScrollInstance) {
+                window.webAutoScrollInstance.showExistingMandateStatus(mandateData);
+            }
+        }
+
+        async function checkMandateStatus(mandateId) {
+            try {
+                const authData = localStorage.getItem('webAutoScrollAuth');
+                if (!authData) return;
+
+                const parsed = JSON.parse(authData);
+                const response = await fetch(`${window.location.origin}/api/upi-mandates/status/${parsed.userId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${parsed.token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && window.webAutoScrollInstance) {
+                        window.webAutoScrollInstance.showExistingMandateStatus(result.data);
+                    }
+                }
+            } catch (error) {
+                console.error('Status check error:', error);
+            }
+        }
+
+        function checkMandateStatusPeriodically(mandateId) {
+            const interval = setInterval(async () => {
+                try {
+                    const authData = localStorage.getItem('webAutoScrollAuth');
+                    if (!authData) {
+                        clearInterval(interval);
+                        return;
+                    }
+
+                    const parsed = JSON.parse(authData);
+                    const response = await fetch(`${window.location.origin}/api/upi-mandates/status/${parsed.userId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${parsed.token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.success && result.data.status === 'ACTIVE') {
+                            clearInterval(interval);
+                            if (window.webAutoScrollInstance) {
+                                window.webAutoScrollInstance.showExistingMandateStatus(result.data);
+                            }
+                            showGlobalNotification('Success!', 'Your subscription is now active!');
+                        }
+                    }
+                } catch (error) {
+                    console.log('Periodic check error:', error);
+                }
+            }, 5000); // Check every 5 seconds
+
+            // Stop checking after 10 minutes
+            setTimeout(() => clearInterval(interval), 10 * 60 * 1000);
+        }
+
+        async function cancelMandate(mandateId) {
+            if (!confirm('Are you sure you want to cancel your subscription? You will lose access to premium features.')) {
+                return;
+            }
+
+            try {
+                const authData = localStorage.getItem('webAutoScrollAuth');
+                if (!authData) return;
+
+                const parsed = JSON.parse(authData);
+                const response = await fetch(`${window.location.origin}/api/upi-mandates/cancel/${parsed.userId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${parsed.token}`
+                    }
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success) {
+                        showGlobalNotification('Cancelled', 'Your subscription has been cancelled.');
+                        checkMandateStatus(mandateId);
+                    }
+                }
+            } catch (error) {
+                console.error('Cancel error:', error);
+                alert('Failed to cancel subscription: ' + error.message);
+            }
+        }
+
+        function createNewMandate() {
+            if (window.webAutoScrollInstance) {
+                window.webAutoScrollInstance.resetSubscriptionModal();
+            }
+        }
+
+        function showMandateQR(mandateId) {
+            // This would typically fetch the QR code for existing mandate
+            alert('QR Code display for existing mandates coming soon!');
+        }
+
+        function showSubscriptionLoading(show) {
+            const upiSection = document.getElementById('upiInputSection');
+            const qrSection = document.getElementById('mandateQrSection');
+            const statusSection = document.getElementById('mandateStatus');
+            const loadingSection = document.getElementById('subscriptionLoading');
+
+            if (show) {
+                if (upiSection) upiSection.style.display = 'none';
+                if (qrSection) qrSection.style.display = 'none';
+                if (statusSection) statusSection.style.display = 'none';
+                if (loadingSection) loadingSection.style.display = 'block';
+            } else {
+                if (loadingSection) loadingSection.style.display = 'none';
+            }
+        }
+
+        function isValidUpiId(upiId) {
+            // Basic UPI ID validation
+            const upiRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/;
+            return upiRegex.test(upiId) && upiId.includes('@');
+        }
+
+        function showGlobalNotification(title, message) {
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #27ae60;
+                color: white;
+                padding: 15px 20px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                z-index: 999999;
+                font-family: Arial, sans-serif;
+                max-width: 300px;
+                cursor: pointer;
+            `;
+            
+            notification.innerHTML = `
+                <div style="font-weight: bold; margin-bottom: 5px;">${title}</div>
+                <div style="font-size: 14px;">${message}</div>
+            `;
+            
+            notification.addEventListener('click', () => notification.remove());
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 5000);
+        }
         
         // Add scroll animations
         document.addEventListener('DOMContentLoaded', function() {
