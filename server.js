@@ -17,6 +17,7 @@ const adminRoutes = require('./routes/admin');
 const cleanupRoutes = require('./routes/cleanup');
 const upiMandateRoutes = require('./routes/upi-mandates');
 const deviceVerificationRoutes = require('./routes/device-verification');
+const { router: trialManagementRoutes } = require('./routes/trial-management');
 
 const app = express();
 
@@ -124,6 +125,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/cleanup', cleanupRoutes);
 app.use('/api/upi-mandates', upiMandateRoutes);
 app.use('/api/device', deviceVerificationRoutes);
+app.use('/api/trials', trialManagementRoutes);
 
 // Serve test dashboard with environment configuration
 app.get('/test-dashboard', (req, res) => {
