@@ -377,11 +377,19 @@ router.get('/status/:userId', async (req, res) => {
                 mandateId: mandate.mandateId,
                 status: mandate.status,
                 amount: mandate.amount,
-                frequency: mandate.frequency,
+                frequency: mandate.frequency || 'Monthly',
                 nextChargeDate: mandate.nextChargeDate,
+                nextPaymentDate: mandate.nextChargeDate, // Alias for frontend compatibility
                 endDate: mandate.endDate,
                 lastChargedDate: mandate.lastChargedDate,
-                qrCodeImage: mandate.status === 'PENDING' ? mandate.qrCodeImage : null
+                startDate: mandate.startDate,
+                createdAt: mandate.createdAt,
+                qrCodeImage: mandate.status === 'PENDING' ? mandate.qrCodeImage : null,
+                qrCodeData: mandate.status === 'PENDING' ? mandate.qrCodeData : null,
+                paymentUrl: mandate.status === 'PENDING' ? mandate.qrCodeData : null,
+                chargeAttempts: mandate.chargeAttempts ? mandate.chargeAttempts.length : 0,
+                lastFailedCharge: mandate.chargeAttempts ? 
+                    mandate.chargeAttempts.filter(attempt => attempt.status === 'FAILED').slice(-1)[0] : null
             }
         });
 
@@ -687,19 +695,29 @@ router.post('/cancel-mandate', async (req, res) => {
     try {
         const { userId, mandateId } = req.body;
 
-        if (!userId || !mandateId) {
+        if (!userId) {
             return res.status(400).json({
                 success: false,
-                message: 'User ID and Mandate ID are required'
+                message: 'User ID is required'
             });
         }
 
-        const mandate = await UpiMandate.findOne({ userId, mandateId });
+        // Find mandate by userId and mandateId, or just userId if mandateId not provided
+        let mandate;
+        if (mandateId) {
+            mandate = await UpiMandate.findOne({ userId, mandateId });
+        } else {
+            // Find active mandate for user
+            mandate = await UpiMandate.findOne({
+                userId,
+                status: { $in: ['PENDING', 'ACTIVE', 'PAUSED'] }
+            }).sort({ createdAt: -1 }); // Get latest active mandate
+        }
 
         if (!mandate) {
             return res.status(404).json({
                 success: false,
-                message: 'Mandate not found'
+                message: 'No active mandate found for this user'
             });
         }
 
@@ -942,5 +960,66 @@ async function processRecurringCharge(mandate) {
         throw error;
     }
 }
+
+// Resume mandate endpoint
+router.post('/resume-mandate', async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+
+        // Find paused mandate
+        const mandate = await UpiMandate.findOne({
+            userId,
+            status: 'PAUSED'
+        });
+
+        if (!mandate) {
+            return res.status(404).json({
+                success: false,
+                message: 'No paused mandate found for this user'
+            });
+        }
+
+        // Update mandate status to active
+        mandate.status = 'ACTIVE';
+        mandate.resumedDate = new Date();
+        
+        // Add activity log
+        mandate.activityLog.push({
+            action: 'RESUMED',
+            timestamp: new Date(),
+            details: 'Mandate resumed by user',
+            metadata: {
+                resumedFrom: 'user_action'
+            }
+        });
+
+        await mandate.save();
+
+        res.json({
+            success: true,
+            message: 'Mandate resumed successfully',
+            data: {
+                mandateId: mandate.mandateId,
+                status: mandate.status,
+                nextChargeDate: mandate.nextChargeDate
+            }
+        });
+
+    } catch (error) {
+        console.error('Resume mandate error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to resume mandate',
+            error: error.message
+        });
+    }
+});
 
 module.exports = router;
