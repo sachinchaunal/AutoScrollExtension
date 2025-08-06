@@ -134,6 +134,7 @@ app.use(session({
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/auth', webAuthRoutes); // Web-based authentication
+app.use('/auth', webAuthRoutes); // Direct auth routes (for OAuth callback)
 app.use('/api/users', userRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
@@ -147,6 +148,11 @@ app.use('/api', websiteRoutes);
 
 // Serve static files from public directory - MUST come after API routes
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Test authentication page
+app.get('/test-auth', (req, res) => {
+    res.sendFile(path.join(__dirname, 'test-auth.html'));
+});
 
 // Serve test dashboard with environment configuration
 app.get('/test-dashboard', (req, res) => {

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Authentication</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .btn {
+            background: #4285f4;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background: #3367d6;
+        }
+        .result {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Authentication Testing Page</h1>
+    
+    <div class="test-section">
+        <h2>1. Test OAuth Routes</h2>
+        <button class="btn" onclick="testRoute('/api/auth/google')">Test /api/auth/google</button>
+        <button class="btn" onclick="testRoute('/auth/google')">Test /auth/google</button>
+        <button class="btn" onclick="testRoute('/api/auth/google?response_type=token&state=web_auth_test')">Test Implicit Flow</button>
+        <div id="routeResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Test Website Authentication</h2>
+        <button class="btn" onclick="testWebAuth()">Test Web Auth Flow</button>
+        <div id="webAuthResult" class="result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Current Session</h2>
+        <button class="btn" onclick="checkSession()">Check Session</button>
+        <div id="sessionResult" class="result"></div>
+    </div>
+
+    <script>
+        function testRoute(route) {
+            const result = document.getElementById('routeResult');
+            result.textContent = `Testing route: ${route}\nOpening in new tab...`;
+            
+            const testWindow = window.open(route, 'testAuth', 'width=600,height=500');
+            
+            setTimeout(() => {
+                if (testWindow && !testWindow.closed) {
+                    result.textContent += `\n✅ Route accessible - popup opened successfully`;
+                } else {
+                    result.textContent += `\n❌ Route failed or popup was blocked`;
+                }
+            }, 2000);
+        }
+
+        function testWebAuth() {
+            const result = document.getElementById('webAuthResult');
+            result.textContent = 'Starting web authentication test...';
+            
+            const popup = window.open(
+                '/api/auth/google?response_type=token&state=web_auth_test', 
+                'webAuth', 
+                'width=500,height=600'
+            );
+            
+            // Listen for auth completion
+            window.addEventListener('message', (event) => {
+                if (event.data.type === 'GOOGLE_AUTH_SUCCESS') {
+                    result.textContent = `✅ Authentication successful!\n` +
+                        `User: ${event.data.user.name} (${event.data.user.email})\n` +
+                        `User ID: ${event.data.userId}\n` +
+                        `Token received: ${event.data.token ? 'Yes' : 'No'}`;
+                    popup.close();
+                }
+            });
+            
+            // Check if popup was blocked
+            setTimeout(() => {
+                if (popup && !popup.closed) {
+                    result.textContent += '\n✅ Popup opened successfully';
+                } else if (!popup) {
+                    result.textContent += '\n❌ Popup was blocked by browser';
+                }
+            }, 1000);
+        }
+
+        async function checkSession() {
+            const result = document.getElementById('sessionResult');
+            result.textContent = 'Checking session...';
+            
+            try {
+                const response = await fetch('/api/auth/me', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    result.textContent = `✅ Session active:\n${JSON.stringify(data, null, 2)}`;
+                } else {
+                    result.textContent = `❌ No active session (Status: ${response.status})`;
+                }
+            } catch (error) {
+                result.textContent = `❌ Error checking session: ${error.message}`;
+            }
+        }
+
+        // Check session on page load
+        document.addEventListener('DOMContentLoaded', checkSession);
+    </script>
+</body>
+</html>

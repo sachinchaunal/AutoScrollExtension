@@ -8,22 +8,41 @@ const jwt = require('jsonwebtoken');
 const client = new OAuth2Client({
     clientId: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    redirectUri: process.env.GOOGLE_REDIRECT_URI || `${process.env.API_BASE_URL || 'http://localhost:3000'}/api/auth/google/callback`
+    redirectUri: process.env.GOOGLE_REDIRECT_URI || `${process.env.API_BASE_URL || 'http://localhost:3000'}/auth/callback`
 });
 
 // Google OAuth login route
 router.get('/google', (req, res) => {
     try {
-        const authUrl = client.generateAuthUrl({
-            access_type: 'offline',
-            scope: [
-                'https://www.googleapis.com/auth/userinfo.profile',
-                'https://www.googleapis.com/auth/userinfo.email'
-            ],
-            prompt: 'consent'
-        });
+        const responseType = req.query.response_type || 'code';
+        const state = req.query.state;
+        
+        if (responseType === 'token') {
+            // Implicit flow for web extension - redirect to Google with token response
+            const params = new URLSearchParams({
+                client_id: process.env.GOOGLE_CLIENT_ID,
+                response_type: 'token',
+                redirect_uri: process.env.GOOGLE_REDIRECT_URI || `${process.env.API_BASE_URL || 'http://localhost:3000'}/auth/callback`,
+                scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email',
+                state: state || 'web_auth'
+            });
+            
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+            res.redirect(authUrl);
+        } else {
+            // Authorization code flow for backend OAuth
+            const authUrl = client.generateAuthUrl({
+                access_type: 'offline',
+                scope: [
+                    'https://www.googleapis.com/auth/userinfo.profile',
+                    'https://www.googleapis.com/auth/userinfo.email'
+                ],
+                prompt: 'consent',
+                state: state
+            });
 
-        res.redirect(authUrl);
+            res.redirect(authUrl);
+        }
     } catch (error) {
         console.error('Google auth URL generation error:', error);
         res.status(500).json({ 
@@ -34,18 +53,57 @@ router.get('/google', (req, res) => {
 });
 
 // Google OAuth callback route
-router.get('/google/callback', async (req, res) => {
+router.get('/callback', async (req, res) => {
     try {
-        const { code } = req.query;
+        const { code, access_token, state } = req.query;
+        let accessToken = access_token;
+        let googleUser = null;
 
-        if (!code) {
+        if (code) {
+            // Authorization code flow
+            const { tokens } = await client.getToken(code);
+            client.setCredentials(tokens);
+            accessToken = tokens.access_token;
+        } else if (!access_token) {
+            // Check URL fragment for implicit flow tokens
+            return res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head><title>Processing Authentication</title></head>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <h1>🔄 Processing Authentication</h1>
+                    <p>Please wait while we process your authentication...</p>
+                    <script>
+                        // Extract token from URL fragment for implicit flow
+                        const fragment = window.location.hash.substring(1);
+                        const params = new URLSearchParams(fragment);
+                        const token = params.get('access_token');
+                        const error = params.get('error');
+                        
+                        if (token) {
+                            // Redirect to callback with token as query parameter
+                            window.location.href = '/auth/callback?access_token=' + token + '&state=' + (params.get('state') || '');
+                        } else if (error) {
+                            document.body.innerHTML = '<h1>❌ Authentication Error</h1><p>Error: ' + error + '</p>';
+                            setTimeout(() => window.close(), 3000);
+                        } else {
+                            document.body.innerHTML = '<h1>❌ No Token Found</h1><p>Authentication failed - no token received</p>';
+                            setTimeout(() => window.close(), 3000);
+                        }
+                    </script>
+                </body>
+                </html>
+            `);
+        }
+
+        if (!accessToken) {
             return res.status(400).send(`
                 <!DOCTYPE html>
                 <html>
                 <head><title>Authentication Error</title></head>
                 <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
                     <h1>❌ Authentication Error</h1>
-                    <p>No authorization code received from Google.</p>
+                    <p>No authorization code or access token received from Google.</p>
                     <script>
                         setTimeout(() => window.close(), 3000);
                     </script>
@@ -54,13 +112,9 @@ router.get('/google/callback', async (req, res) => {
             `);
         }
 
-        // Exchange code for tokens
-        const { tokens } = await client.getToken(code);
-        client.setCredentials(tokens);
-
         // Get user info from Google
-        const response = await fetch(`https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokens.access_token}`);
-        const googleUser = await response.json();
+        const response = await fetch(`https://www.googleapis.com/oauth2/v2/userinfo?access_token=${accessToken}`);
+        googleUser = await response.json();
 
         if (!googleUser.email) {
             throw new Error('Failed to get user email from Google');
@@ -119,38 +173,79 @@ router.get('/google/callback', async (req, res) => {
         };
         req.session.token = jwtToken;
 
-        // Send success response with script to communicate with parent window
-        res.send(`
-            <!DOCTYPE html>
-            <html>
-            <head><title>Authentication Successful</title></head>
-            <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                <h1>✅ Authentication Successful</h1>
-                <p>You can close this window.</p>
-                <script>
-                    // Send success message to parent window
-                    if (window.opener) {
-                        window.opener.postMessage({
-                            type: 'GOOGLE_AUTH_SUCCESS',
-                            user: {
-                                id: '${user._id}',
-                                email: '${user.email}',
-                                name: '${user.name}',
-                                picture: '${user.picture}'
-                            },
-                            token: '${jwtToken}',
-                            userId: '${user._id}'
-                        }, '${process.env.API_BASE_URL || 'http://localhost:3000'}');
-                    }
-                    
-                    // Auto-close after 2 seconds
-                    setTimeout(() => {
-                        window.close();
-                    }, 2000);
-                </script>
-            </body>
-            </html>
-        `);
+        // Check if this is an implicit flow request (from web extension)
+        const isWebExtension = state && state.includes('web_auth');
+        
+        if (isWebExtension) {
+            // For implicit flow, show success page with token in hash
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head><title>Authentication Successful</title></head>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <h1>✅ Authentication Successful!</h1>
+                    <p>You can close this window and return to the extension.</p>
+                    <script>
+                        // Store token globally for script injection
+                        window.extractedToken = '${accessToken}';
+                        
+                        // Send success message to parent window (extension)
+                        if (window.opener) {
+                            window.opener.postMessage({
+                                type: 'GOOGLE_AUTH_SUCCESS',
+                                user: {
+                                    id: '${user._id}',
+                                    email: '${user.email}',
+                                    name: '${user.name}',
+                                    picture: '${user.picture}'
+                                },
+                                token: '${jwtToken}',
+                                userId: '${user._id}'
+                            }, '*');
+                        }
+                        
+                        // Auto-close after 2 seconds
+                        setTimeout(() => {
+                            window.close();
+                        }, 2000);
+                    </script>
+                </body>
+                </html>
+            `);
+        } else {
+            // Regular authorization code flow - send success response
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head><title>Authentication Successful</title></head>
+                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+                    <h1>✅ Authentication Successful!</h1>
+                    <p>You can close this window.</p>
+                    <script>
+                        // Send success message to parent window
+                        if (window.opener) {
+                            window.opener.postMessage({
+                                type: 'GOOGLE_AUTH_SUCCESS',
+                                user: {
+                                    id: '${user._id}',
+                                    email: '${user.email}',
+                                    name: '${user.name}',
+                                    picture: '${user.picture}'
+                                },
+                                token: '${jwtToken}',
+                                userId: '${user._id}'
+                            }, '*');
+                        }
+                        
+                        // Auto-close after 2 seconds
+                        setTimeout(() => {
+                            window.close();
+                        }, 2000);
+                    </script>
+                </body>
+                </html>
+            `);
+        }
 
     } catch (error) {
         console.error('Google OAuth callback error:', error);

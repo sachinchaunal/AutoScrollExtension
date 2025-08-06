@@ -1196,9 +1196,9 @@
                 try {
                     this.showLoading(true);
                     
-                    // Create a popup for Google OAuth
+                    // Create a popup for Google OAuth with implicit flow
                     const popup = window.open(
-                        `${this.API_BASE}/api/auth/google`, 
+                        `${this.API_BASE}/api/auth/google?response_type=token&state=web_auth_${Date.now()}`, 
                         'googleLogin', 
                         'width=500,height=600,scrollbars=yes,resizable=yes'
                     );
