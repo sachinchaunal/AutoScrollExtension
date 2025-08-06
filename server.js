@@ -45,9 +45,6 @@ if (CONFIG.nodeEnv === 'production') {
     app.set('trust proxy', true);
 }
 
-// Serve static files from public directory
-app.use(express.static(path.join(__dirname, 'public')));
-
 // Validate configuration before starting
 console.log('🔧 Starting AutoScroll Backend Server...\n');
 console.log('📋 Server Configuration:');
@@ -148,35 +145,8 @@ app.use('/api/device', deviceVerificationRoutes);
 app.use('/api/trials', trialManagementRoutes);
 app.use('/api', websiteRoutes);
 
-// Serve static files from public directory
+// Serve static files from public directory - MUST come after API routes
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Serve frontend website (for Razorpay verification)
-app.get('/', (req, res) => {
-    try {
-        const path = require('path');
-        const fs = require('fs');
-        const frontendPath = path.join(__dirname, 'public', 'index.html');
-        
-        if (!fs.existsSync(frontendPath)) {
-            return res.status(404).send(`
-                <!DOCTYPE html>
-                <html><head><title>AutoScroll Extension</title></head>
-                <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
-                    <h1>🚀 AutoScroll Extension</h1>
-                    <p>Official website for Chrome extension</p>
-                    <p><strong>Status:</strong> Under Development</p>
-                    <p><em>Frontend file not found at: ${frontendPath}</em></p>
-                </body></html>
-            `);
-        }
-        
-        res.sendFile(frontendPath);
-    } catch (error) {
-        console.error('Error serving frontend:', error);
-        res.status(500).send('Error loading website');
-    }
-});
 
 // Serve test dashboard with environment configuration
 app.get('/test-dashboard', (req, res) => {
@@ -277,9 +247,6 @@ app.get('/auth/callback', (req, res) => {
         res.status(500).send('Authentication callback error');
     }
 });
-
-// Root endpoint - removed duplicate route
-// The main website is served by the static file middleware above
 
 // API status endpoint
 app.get('/api/status', (req, res) => {
