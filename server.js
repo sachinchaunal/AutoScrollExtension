@@ -146,6 +146,23 @@ app.use('/api/device', deviceVerificationRoutes);
 app.use('/api/trials', trialManagementRoutes);
 app.use('/api', websiteRoutes);
 
+// Individual page routes
+app.get('/contact', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'pages', 'contact.html'));
+});
+
+app.get('/support', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'pages', 'support.html'));
+});
+
+app.get('/privacy', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'pages', 'privacy.html'));
+});
+
+app.get('/terms', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'pages', 'terms.html'));
+});
+
 // Serve static files from public directory - MUST come after API routes
 app.use(express.static(path.join(__dirname, 'public')));
 

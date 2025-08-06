@@ -8,7 +8,7 @@ router.use(powershellInstaller);
 
 // Email configuration
 const createTransporter = () => {
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
         service: 'gmail',
         auth: {
             user: process.env.EMAIL_USER || 'sachinchaunal13@gmail.com',
