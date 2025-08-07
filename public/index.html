@@ -690,6 +690,468 @@
             background: #95a5a6;
             color: white;
         }
+
+        /* ===== EXTENSION INTERFACE STYLES ===== */
+        .extension-interface-wrapper {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .extension-container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+            min-height: 600px;
+        }
+
+        /* Extension Login Screen */
+        .extension-login-screen {
+            padding: 40px 30px;
+            text-align: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            min-height: 600px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .extension-login-screen .header h2 {
+            font-size: 32px;
+            margin-bottom: 15px;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            letter-spacing: -0.5px;
+        }
+
+        .extension-login-screen .subtitle {
+            font-size: 18px;
+            opacity: 0.95;
+            margin-bottom: 40px;
+            font-weight: 400;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .feature-highlights {
+            margin: 40px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .feature {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding: 18px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .feature:hover {
+            background: rgba(255, 255, 255, 0.25);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+
+        .feature .icon {
+            font-size: 26px;
+            margin-right: 18px;
+            width: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .feature span:last-child {
+            font-size: 18px;
+            font-weight: 600;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .auth-buttons {
+            margin: 40px 0;
+        }
+
+        .btn-google {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 18px 28px;
+            background: white;
+            color: #333;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            margin: 20px 0;
+            text-decoration: none;
+        }
+
+        .btn-google:hover {
+            background: #f8f9fa;
+            box-shadow: 0 6px 25px rgba(0, 0, 0, 0.25);
+            transform: translateY(-3px);
+            color: #333;
+            text-decoration: none;
+        }
+
+        .btn-google img {
+            width: 24px;
+            height: 24px;
+            margin-right: 12px;
+        }
+
+        .auth-info {
+            margin-top: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .auth-info p {
+            font-size: 15px;
+            margin: 0;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        /* Extension Main Screen */
+        .extension-main-screen {
+            background: white;
+            min-height: 600px;
+        }
+
+        .extension-main-screen .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .user-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin-right: 15px;
+            border: 3px solid rgba(255,255,255,0.3);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .user-details {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .user-name {
+            font-size: 18px;
+            font-weight: 700;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .user-email {
+            font-size: 14px;
+            color: rgba(255,255,255,0.9);
+            text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .btn-logout {
+            padding: 12px 18px;
+            background: rgba(220, 53, 69, 0.9);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-logout:hover {
+            background: rgba(200, 35, 51, 1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+        }
+
+        .status-section {
+            padding: 30px;
+            text-align: center;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            font-size: 18px;
+            font-weight: 600;
+            padding: 18px;
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            border-radius: 12px;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator.active {
+            background: linear-gradient(135deg, #d4edda, #c3e6cb);
+            border-color: #28a745;
+            color: #155724;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #6c757d;
+        }
+
+        .status-indicator.active .status-dot {
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        .platform-info {
+            margin-top: 20px;
+            text-align: left;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .platform-info p {
+            margin: 5px 0;
+            color: #6c757d;
+            font-size: 14px;
+        }
+
+        .controls {
+            padding: 30px;
+            text-align: center;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #007bff, #0056b3);
+            color: white;
+            width: 100%;
+            padding: 18px 28px;
+            font-size: 18px;
+            font-weight: 700;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.3);
+            margin-bottom: 15px;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #0056b3, #004085);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 123, 255, 0.4);
+        }
+
+        .btn-secondary {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            width: 100%;
+            padding: 16px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+
+        .btn-secondary:hover {
+            background: linear-gradient(135deg, #20c997, #17a2b8);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.4);
+        }
+
+        .subscription-info {
+            padding: 30px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .subscription-info h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 22px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .subscription-info p {
+            color: #6c757d;
+            font-size: 16px;
+            margin-bottom: 15px;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        .trial-info, .subscription-status, .expired-notice {
+            margin-bottom: 25px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background-color: #e9ecef;
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 20px 0;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .progress {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            border-radius: 6px;
+            transition: width 0.3s ease;
+            box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+        }
+
+        .subscription-details {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .subscription-details p {
+            margin: 8px 0;
+            text-align: left;
+            font-size: 14px;
+        }
+
+        .extension-features {
+            padding: 30px;
+        }
+
+        .feature-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .feature-card h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .feature-card ul {
+            list-style: none;
+            padding: 0;
+            margin: 15px 0;
+        }
+
+        .feature-card li {
+            padding: 8px 0;
+            color: #6c757d;
+            font-size: 15px;
+        }
+
+        .feature-card p {
+            color: #6c757d;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-outline:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-1px);
+        }
+
+        /* Loading Screen */
+        .extension-loading-screen {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 600px;
+            background: white;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .extension-loading-screen p {
+            color: #666;
+            font-size: 16px;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -725,14 +1187,152 @@
             </div>
         </section>
 
-        <!-- Web-Based Extension Section -->
+        <!-- Extension-Style Web Interface Section -->
         <section class="web-extension-section">
             <div class="container">
-                <h2 style="text-align: center; color: white; margin-bottom: 30px;">🌐 Try AutoScroll Online</h2>
-                <p style="text-align: center; color: white; opacity: 0.9; margin-bottom: 40px;">Experience AutoScroll directly in your browser without installing any extension!</p>
+                <h2 style="text-align: center; color: white; margin-bottom: 30px;">🚀 AutoScroll Extension Experience</h2>
+                <p style="text-align: center; color: white; opacity: 0.9; margin-bottom: 40px;">Get the full extension experience directly in your browser!</p>
                 
-                <!-- Extension Interface -->
-                <div class="web-extension-container" id="webExtensionContainer">
+                <!-- Extension-Style Container -->
+                <div class="extension-interface-wrapper">
+                    <div class="extension-container">
+                        <!-- Login Screen (Extension Style) -->
+                        <div class="extension-login-screen" id="extensionLoginScreen">
+                            <div class="header">
+                                <h2>YouTube Shorts AutoScroll</h2>
+                                <p class="subtitle">Auto-scroll through YouTube Shorts seamlessly</p>
+                            </div>
+                            
+                            <div class="login-content">
+                                <div class="feature-highlights">
+                                    <div class="feature">
+                                        <span class="icon">⏭️</span>
+                                        <span>Auto-scroll when videos end</span>
+                                    </div>
+                                    <div class="feature">
+                                        <span class="icon">⏱️</span>
+                                        <span>10-day free trial</span>
+                                    </div>
+                                    <div class="feature">
+                                        <span class="icon">💳</span>
+                                        <span>Only ₹9/month after trial</span>
+                                    </div>
+                                    <div class="feature">
+                                        <span class="icon">🌐</span>
+                                        <span>Works in any browser</span>
+                                    </div>
+                                </div>
+
+                                <div class="auth-buttons">
+                                    <button id="extensionGoogleLoginBtn" class="btn btn-google">
+                                        <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHZpZXdCb3g9IjAgMCAxOCAxOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE3LjY0IDkuMjA0NTVDMTcuNjQgOC41NjY4MiAxNy41ODI3IDcuOTUyMjcgMTcuNDggNy4zNjM2NEg5VjEwLjg0NTVIMTMuODQzNkMxMy42MzUgMTEuOTcgMTMuMDAwOSAxMi45MjMgMTIuMDQ3NyAxMy41NjE0VjE1LjgxOTVIMTQuOTU2OEMxNi42NTkxIDE0LjI1MjMgMTcuNjQgMTEuOTQ1NSAxNy42NCA5LjIwNDU1WiIgZmlsbD0iIzQyODVGNCIvPgo8cGF0aCBkPSJNOSAxOEM4LjQxIDEwIDkuMDE4IDExLjA1IDEwIDExLjA1SDEwLjQ1QzEwLjk1IDExLjA1IDExLjQgMTAuNjUgMTEuNCAxMC4xNVY5LjQ1SDEyLjZWMTAuMTVDMTIuNiAxMS4zNSAxMS43IDEyLjI1IDEwLjQ1IDEyLjI1SDEwQzguNzUgMTIuMjUgNy43NSAxMS4yNSA3Ljc1IDEwVjNIMTBWMTBIMTEuNCIgZmlsbD0iIzM0QTg1MyIvPgo8L3N2Zz4K" alt="Google" />
+                                        Sign in with Google
+                                    </button>
+                                    
+                                    <div class="auth-info">
+                                        <p>🔒 Secure Google authentication</p>
+                                        <p>✨ Start your free trial instantly</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Main App Screen (Extension Style) -->
+                        <div class="extension-main-screen" id="extensionMainScreen" style="display: none;">
+                            <div class="header">
+                                <div class="user-info">
+                                    <img id="extensionUserPicture" src="" alt="User" class="user-avatar">
+                                    <div class="user-details">
+                                        <span id="extensionUserName" class="user-name">Loading...</span>
+                                        <span id="extensionUserEmail" class="user-email">Loading...</span>
+                                    </div>
+                                </div>
+                                <button id="extensionLogoutBtn" class="btn btn-logout">Logout</button>
+                            </div>
+
+                            <div class="status-section">
+                                <div class="status-indicator" id="extensionStatusIndicator">
+                                    <span class="status-dot" id="extensionStatusDot"></span>
+                                    <span id="extensionStatusText">Ready to Start</span>
+                                </div>
+                                
+                                <div class="platform-info">
+                                    <p><strong>Platform:</strong> Web Browser</p>
+                                    <p><strong>Mode:</strong> New Tab AutoScroll</p>
+                                </div>
+                            </div>
+
+                            <div class="controls">
+                                <button id="extensionToggleButton" class="btn btn-primary">
+                                    🌐 Start Web AutoScroll
+                                </button>
+                                <button id="extensionOpenYouTubeBtn" class="btn btn-secondary">
+                                    📺 Open YouTube Shorts
+                                </button>
+                            </div>
+
+                            <div class="subscription-info" id="extensionSubscriptionInfo">
+                                <!-- Trial Info -->
+                                <div class="trial-info" id="extensionTrialInfo">
+                                    <h3>🎉 Free Trial Active</h3>
+                                    <p id="extensionTrialDays">Loading trial info...</p>
+                                    <div class="progress-bar">
+                                        <div class="progress" id="extensionTrialProgress"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Premium Subscription -->
+                                <div class="subscription-status" id="extensionSubscriptionStatus" style="display: none;">
+                                    <h3>⭐ Premium Plan Active</h3>
+                                    <p id="extensionSubscriptionText">Unlimited AutoScroll access</p>
+                                    <div class="subscription-details">
+                                        <p><strong>Next Payment:</strong> <span id="extensionNextPayment">Loading...</span></p>
+                                        <p><strong>Status:</strong> <span id="extensionMandateStatus">Active</span></p>
+                                    </div>
+                                </div>
+
+                                <!-- Trial Expired -->
+                                <div class="expired-notice" id="extensionExpiredNotice" style="display: none;">
+                                    <h3>⏰ Trial Expired</h3>
+                                    <p>Subscribe to continue using YouTube Shorts AutoScroll</p>
+                                </div>
+
+                                <button id="extensionSubscribeButton" class="btn btn-secondary">
+                                    💳 Manage Subscription
+                                </button>
+                            </div>
+
+                            <!-- Extension-specific features -->
+                            <div class="extension-features">
+                                <div class="feature-card">
+                                    <h4>🚀 Web AutoScroll Features</h4>
+                                    <ul>
+                                        <li>✅ Opens YouTube Shorts in new tab</li>
+                                        <li>✅ Automatic video progression</li>
+                                        <li>✅ Hands-free viewing experience</li>
+                                        <li>✅ Works across all browsers</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="feature-card">
+                                    <h4>🔌 Want Better Integration?</h4>
+                                    <p>Install our Chrome extension for seamless YouTube integration with background operation and automatic activation.</p>
+                                    <button id="downloadExtensionBtn" class="btn btn-outline">
+                                        📥 Download Extension
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Loading Screen -->
+                        <div class="extension-loading-screen" id="extensionLoadingScreen" style="display: none;">
+                            <div class="spinner"></div>
+                            <p>Initializing AutoScroll...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
                     <!-- Login Screen -->
                     <div class="web-login-screen" id="webLoginScreen">
                         <div class="web-header">
@@ -1055,7 +1655,7 @@
     <!-- Subscription Modal -->
     <div id="subscriptionModal" class="modal">
         <div class="modal-content" style="max-width: 600px;">
-            <span class="close" onclick="closeSubscriptionModal()">&times;</span>
+            <span class="close" id="subscriptionModalClose">&times;</span>
             <h2>🚀 Subscribe to Premium AutoScroll</h2>
             <p style="text-align: center; color: #666; margin-bottom: 30px;">₹9/month - Unlimited auto-scrolling with automatic renewal</p>
             
@@ -1723,7 +2323,7 @@
                         statusText = 'Active';
                         actions = `
                             <div class="subscription-actions">
-                                <button class="btn-danger" onclick="cancelMandate('${mandateData.mandateId}')">
+                                <button class="btn-danger" data-action="cancel-mandate" data-mandate-id="${mandateData.mandateId}">
                                     Cancel Subscription
                                 </button>
                             </div>
@@ -1735,10 +2335,10 @@
                         statusText = 'Pending Setup';
                         actions = `
                             <div class="subscription-actions">
-                                <button class="btn-success" onclick="console.log('Check Status clicked for mandate: ${mandateData.mandateId}'); checkMandateStatus('${mandateData.mandateId}')" style="cursor: pointer;">
+                                <button class="btn-success" data-action="check-status" data-mandate-id="${mandateData.mandateId}" style="cursor: pointer;">
                                     Check Status
                                 </button>
-                                <button class="btn-secondary" onclick="console.log('Show QR clicked for mandate: ${mandateData.mandateId}'); showMandateQR('${mandateData.mandateId}')" style="cursor: pointer;">
+                                <button class="btn-secondary" data-action="show-qr" data-mandate-id="${mandateData.mandateId}" style="cursor: pointer;">
                                     Show QR Code
                                 </button>
                             </div>
@@ -1750,7 +2350,7 @@
                         statusText = 'Cancelled';
                         actions = `
                             <div class="subscription-actions">
-                                <button class="btn-success" onclick="createNewMandate()">
+                                <button class="btn-success" data-action="create-new-mandate">
                                     Create New Subscription
                                 </button>
                             </div>
@@ -1773,13 +2373,13 @@
                             <!-- Debug Test Buttons -->
                             <div style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
                                 <p style="font-size: 12px; margin: 5px 0;"><strong>🧪 Debug Test Buttons:</strong></p>
-                                <button onclick="alert('Direct test button works!'); console.log('Direct test clicked');" style="background: #3498db; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
+                                <button data-action="test-direct" style="background: #3498db; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
                                     Test Direct Click
                                 </button>
-                                <button onclick="window.checkMandateStatus('${mandateData.mandateId}')" style="background: #27ae60; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
+                                <button data-action="test-check-status" data-mandate-id="${mandateData.mandateId}" style="background: #27ae60; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
                                     Test Check Status
                                 </button>
-                                <button onclick="window.showMandateQR('${mandateData.mandateId}')" style="background: #f39c12; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
+                                <button data-action="test-show-qr" data-mandate-id="${mandateData.mandateId}" style="background: #f39c12; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
                                     Test Show QR
                                 </button>
                             </div>
@@ -1787,6 +2387,93 @@
                             ${actions}
                         </div>
                     `;
+                }
+                
+                // Set up event listeners for dynamically created buttons
+                this.setupDynamicButtonListeners();
+            }
+
+            setupDynamicButtonListeners() {
+                // Use event delegation to handle dynamically created buttons
+                const statusContent = document.getElementById('statusContent');
+                if (statusContent) {
+                    // Remove any existing listeners
+                    statusContent.removeEventListener('click', this.handleDynamicButtonClick);
+                    
+                    // Add new listener
+                    statusContent.addEventListener('click', this.handleDynamicButtonClick.bind(this));
+                }
+            }
+
+            handleDynamicButtonClick(event) {
+                const button = event.target.closest('button[data-action]');
+                if (!button) return;
+
+                const action = button.getAttribute('data-action');
+                const mandateId = button.getAttribute('data-mandate-id');
+
+                console.log('🔘 Dynamic button clicked:', action, 'mandateId:', mandateId);
+
+                switch (action) {
+                    case 'check-status':
+                        console.log('🔍 Executing checkMandateStatus for:', mandateId);
+                        if (window.checkMandateStatus) {
+                            window.checkMandateStatus(mandateId);
+                        } else {
+                            console.error('checkMandateStatus function not found');
+                        }
+                        break;
+                        
+                    case 'show-qr':
+                        console.log('📱 Executing showMandateQR for:', mandateId);
+                        if (window.showMandateQR) {
+                            window.showMandateQR(mandateId);
+                        } else {
+                            console.error('showMandateQR function not found');
+                        }
+                        break;
+                        
+                    case 'cancel-mandate':
+                        console.log('❌ Executing cancelMandate for:', mandateId);
+                        if (window.cancelMandate) {
+                            window.cancelMandate(mandateId);
+                        } else {
+                            console.error('cancelMandate function not found');
+                        }
+                        break;
+                        
+                    case 'create-new-mandate':
+                        console.log('🆕 Executing createNewMandate');
+                        if (window.createNewMandate) {
+                            window.createNewMandate();
+                        } else {
+                            console.error('createNewMandate function not found');
+                        }
+                        break;
+                        
+                    case 'test-direct':
+                        console.log('🧪 Direct test clicked');
+                        alert('Direct test button works!');
+                        break;
+                        
+                    case 'test-check-status':
+                        console.log('🧪 Test check status clicked for:', mandateId);
+                        alert('Test Check Status function called! Mandate ID: ' + mandateId);
+                        if (window.checkMandateStatus) {
+                            window.checkMandateStatus(mandateId);
+                        }
+                        break;
+                        
+                    case 'test-show-qr':
+                        console.log('🧪 Test show QR clicked for:', mandateId);
+                        alert('Test Show QR function called! Mandate ID: ' + mandateId);
+                        if (window.showMandateQR) {
+                            window.showMandateQR(mandateId);
+                        }
+                        break;
+                        
+                    default:
+                        console.log('🤷 Unknown action:', action);
                 }
             }
 
@@ -2545,12 +3232,21 @@
                 // Add new listener
                 createMandateBtn.addEventListener('click', handleCreateMandate);
                 
-                // Also add onclick as fallback
-                createMandateBtn.onclick = handleCreateMandate;
-                
                 console.log('Event listeners added successfully');
             } else {
                 console.error('Create mandate button not found!');
+            }
+
+            // Add event listener for subscription modal close button
+            const closeBtn = document.getElementById('subscriptionModalClose');
+            if (closeBtn) {
+                console.log('Close button found, adding event listener...');
+                closeBtn.addEventListener('click', function() {
+                    console.log('Close button clicked');
+                    closeSubscriptionModal();
+                });
+            } else {
+                console.error('Close button not found!');
             }
         });
 
@@ -2567,6 +3263,432 @@
                 alert('Error: ' + error.message);
             }
         }
+
+        // ===== EXTENSION INTERFACE FUNCTIONALITY =====
+        class WebExtensionInterface {
+            constructor() {
+                this.isActive = false;
+                this.currentUser = null;
+                this.isLoggedIn = false;
+                this.subscription = null;
+                this.autoScrollWindow = null;
+                this.init();
+            }
+
+            init() {
+                this.bindEvents();
+                this.checkAuthStatus();
+            }
+
+            bindEvents() {
+                // Login button
+                const loginBtn = document.getElementById('extensionGoogleLoginBtn');
+                if (loginBtn) {
+                    loginBtn.addEventListener('click', () => this.handleLogin());
+                }
+
+                // Main screen buttons
+                const toggleBtn = document.getElementById('extensionToggleButton');
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('click', () => this.toggleAutoScroll());
+                }
+
+                const youtubeBtn = document.getElementById('extensionOpenYouTubeBtn');
+                if (youtubeBtn) {
+                    youtubeBtn.addEventListener('click', () => this.openYouTube());
+                }
+
+                const subscribeBtn = document.getElementById('extensionSubscribeButton');
+                if (subscribeBtn) {
+                    subscribeBtn.addEventListener('click', () => this.manageSubscription());
+                }
+
+                const logoutBtn = document.getElementById('extensionLogoutBtn');
+                if (logoutBtn) {
+                    logoutBtn.addEventListener('click', () => this.handleLogout());
+                }
+
+                const downloadExtensionBtn = document.getElementById('downloadExtensionBtn');
+                if (downloadExtensionBtn) {
+                    downloadExtensionBtn.addEventListener('click', () => this.downloadExtension());
+                }
+            }
+
+            async checkAuthStatus() {
+                try {
+                    // Check if user is already logged in via main auth system
+                    if (window.currentUser) {
+                        this.currentUser = window.currentUser;
+                        this.isLoggedIn = true;
+                        await this.loadUserData();
+                        this.showMainScreen();
+                    } else {
+                        this.showLoginScreen();
+                    }
+                } catch (error) {
+                    console.error('Auth check error:', error);
+                    this.showLoginScreen();
+                }
+            }
+
+            async handleLogin() {
+                try {
+                    this.showLoadingScreen();
+                    
+                    // Use the existing Google auth system
+                    if (window.signInWithGoogle) {
+                        await window.signInWithGoogle();
+                        // Wait for auth to complete
+                        setTimeout(() => {
+                            if (window.currentUser) {
+                                this.currentUser = window.currentUser;
+                                this.isLoggedIn = true;
+                                this.loadUserData();
+                                this.showMainScreen();
+                            } else {
+                                throw new Error('Login failed');
+                            }
+                        }, 2000);
+                    } else {
+                        // Fallback: redirect to main auth
+                        window.location.href = '#auth-section';
+                        this.showNotification('Please login using the main authentication section above', 'info');
+                    }
+                } catch (error) {
+                    console.error('Login error:', error);
+                    this.showNotification('Login failed. Please try again.', 'error');
+                    this.showLoginScreen();
+                }
+            }
+
+            async loadUserData() {
+                try {
+                    if (!this.currentUser) return;
+
+                    // Update user display
+                    const userPicture = document.getElementById('extensionUserPicture');
+                    const userName = document.getElementById('extensionUserName');
+                    const userEmail = document.getElementById('extensionUserEmail');
+
+                    if (userPicture && this.currentUser.picture) {
+                        userPicture.src = this.currentUser.picture;
+                    }
+                    if (userName && this.currentUser.name) {
+                        userName.textContent = this.currentUser.name;
+                    }
+                    if (userEmail && this.currentUser.email) {
+                        userEmail.textContent = this.currentUser.email;
+                    }
+
+                    // Load subscription data
+                    await this.loadSubscriptionData();
+                    
+                } catch (error) {
+                    console.error('Error loading user data:', error);
+                }
+            }
+
+            async loadSubscriptionData() {
+                try {
+                    const response = await fetch('/api/users/subscription-status', {
+                        credentials: 'include'
+                    });
+                    const data = await response.json();
+                    
+                    this.subscription = data;
+                    this.updateSubscriptionDisplay();
+                    
+                } catch (error) {
+                    console.error('Error loading subscription:', error);
+                    this.showTrialInfo();
+                }
+            }
+
+            updateSubscriptionDisplay() {
+                const trialInfo = document.getElementById('extensionTrialInfo');
+                const subscriptionStatus = document.getElementById('extensionSubscriptionStatus');
+                const expiredNotice = document.getElementById('extensionExpiredNotice');
+                const subscribeBtn = document.getElementById('extensionSubscribeButton');
+
+                // Hide all sections first
+                if (trialInfo) trialInfo.style.display = 'none';
+                if (subscriptionStatus) subscriptionStatus.style.display = 'none';
+                if (expiredNotice) expiredNotice.style.display = 'none';
+
+                if (!this.subscription) {
+                    this.showTrialInfo();
+                    return;
+                }
+
+                if (this.subscription.hasActiveSubscription) {
+                    // Premium subscription
+                    if (subscriptionStatus) {
+                        subscriptionStatus.style.display = 'block';
+                        const nextPayment = document.getElementById('extensionNextPayment');
+                        const mandateStatus = document.getElementById('extensionMandateStatus');
+                        
+                        if (nextPayment && this.subscription.nextPaymentDate) {
+                            nextPayment.textContent = new Date(this.subscription.nextPaymentDate).toLocaleDateString();
+                        }
+                        if (mandateStatus) {
+                            mandateStatus.textContent = this.subscription.mandateStatus || 'Active';
+                        }
+                    }
+                    if (subscribeBtn) {
+                        subscribeBtn.textContent = '⚙️ Manage Subscription';
+                    }
+                } else if (this.subscription.isInTrial) {
+                    // Trial period
+                    this.showTrialInfo();
+                } else {
+                    // Trial expired
+                    if (expiredNotice) expiredNotice.style.display = 'block';
+                    if (subscribeBtn) {
+                        subscribeBtn.textContent = '💳 Subscribe Now';
+                    }
+                }
+            }
+
+            showTrialInfo() {
+                const trialInfo = document.getElementById('extensionTrialInfo');
+                const trialDays = document.getElementById('extensionTrialDays');
+                const trialProgress = document.getElementById('extensionTrialProgress');
+
+                if (trialInfo) trialInfo.style.display = 'block';
+                
+                if (this.subscription && this.subscription.trialDaysLeft !== undefined) {
+                    if (trialDays) {
+                        trialDays.textContent = `${this.subscription.trialDaysLeft} days remaining`;
+                    }
+                    if (trialProgress) {
+                        const progressPercent = ((10 - this.subscription.trialDaysLeft) / 10) * 100;
+                        trialProgress.style.width = `${progressPercent}%`;
+                    }
+                } else {
+                    if (trialDays) {
+                        trialDays.textContent = '10-day free trial available';
+                    }
+                    if (trialProgress) {
+                        trialProgress.style.width = '0%';
+                    }
+                }
+            }
+
+            toggleAutoScroll() {
+                const toggleBtn = document.getElementById('extensionToggleButton');
+                const statusIndicator = document.getElementById('extensionStatusIndicator');
+                const statusText = document.getElementById('extensionStatusText');
+
+                if (!this.isActive) {
+                    // Start AutoScroll
+                    this.startWebAutoScroll();
+                    this.isActive = true;
+                    
+                    if (toggleBtn) toggleBtn.textContent = '⏹️ Stop AutoScroll';
+                    if (statusIndicator) statusIndicator.classList.add('active');
+                    if (statusText) statusText.textContent = 'AutoScroll Active';
+                    
+                    this.showNotification('AutoScroll started! Opening YouTube Shorts...', 'success');
+                } else {
+                    // Stop AutoScroll
+                    this.stopWebAutoScroll();
+                    this.isActive = false;
+                    
+                    if (toggleBtn) toggleBtn.textContent = '🌐 Start Web AutoScroll';
+                    if (statusIndicator) statusIndicator.classList.remove('active');
+                    if (statusText) statusText.textContent = 'Ready to Start';
+                    
+                    this.showNotification('AutoScroll stopped', 'info');
+                }
+            }
+
+            startWebAutoScroll() {
+                // Open YouTube Shorts in a new window
+                const youtubeUrl = 'https://www.youtube.com/shorts';
+                this.autoScrollWindow = window.open(youtubeUrl, '_blank', 'width=800,height=600');
+                
+                if (this.autoScrollWindow) {
+                    // Inject auto-scroll script when the page loads
+                    setTimeout(() => {
+                        this.injectAutoScrollScript();
+                    }, 3000);
+                } else {
+                    this.showNotification('Popup blocked. Please allow popups for this site.', 'error');
+                }
+            }
+
+            stopWebAutoScroll() {
+                if (this.autoScrollWindow && !this.autoScrollWindow.closed) {
+                    this.autoScrollWindow.close();
+                }
+                this.autoScrollWindow = null;
+            }
+
+            injectAutoScrollScript() {
+                if (!this.autoScrollWindow || this.autoScrollWindow.closed) return;
+
+                try {
+                    const script = `
+                        (function() {
+                            let autoScrollEnabled = true;
+                            let scrollInterval;
+
+                            function autoScroll() {
+                                if (!autoScrollEnabled) return;
+                                
+                                // Find the next button or scroll down
+                                const nextButton = document.querySelector('[aria-label*="next"], [aria-label*="Next"]');
+                                if (nextButton) {
+                                    nextButton.click();
+                                } else {
+                                    // Fallback: scroll down
+                                    window.scrollBy(0, window.innerHeight);
+                                }
+                            }
+
+                            function startAutoScroll() {
+                                if (scrollInterval) clearInterval(scrollInterval);
+                                scrollInterval = setInterval(autoScroll, 8000); // 8 seconds
+                            }
+
+                            // Start auto-scrolling
+                            setTimeout(startAutoScroll, 2000);
+
+                            console.log('AutoScroll Web Extension activated');
+                        })();
+                    `;
+
+                    this.autoScrollWindow.eval(script);
+                } catch (error) {
+                    console.error('Failed to inject script:', error);
+                    this.showNotification('AutoScroll setup failed. Try manually navigating to YouTube Shorts.', 'warning');
+                }
+            }
+
+            openYouTube() {
+                window.open('https://www.youtube.com/shorts', '_blank');
+                this.showNotification('Opening YouTube Shorts in new tab', 'info');
+            }
+
+            manageSubscription() {
+                // Scroll to subscription section
+                const subscriptionSection = document.querySelector('.subscription-section');
+                if (subscriptionSection) {
+                    subscriptionSection.scrollIntoView({ behavior: 'smooth' });
+                    this.showNotification('Scrolled to subscription section', 'info');
+                } else {
+                    this.showNotification('Subscription management coming soon!', 'info');
+                }
+            }
+
+            downloadExtension() {
+                // Link to Chrome Web Store or download
+                this.showNotification('Extension download will be available soon!', 'info');
+            }
+
+            handleLogout() {
+                if (confirm('Are you sure you want to logout?')) {
+                    // Use main logout function if available
+                    if (window.logout) {
+                        window.logout();
+                    }
+                    
+                    this.currentUser = null;
+                    this.isLoggedIn = false;
+                    this.subscription = null;
+                    this.isActive = false;
+                    
+                    if (this.autoScrollWindow) {
+                        this.autoScrollWindow.close();
+                    }
+                    
+                    this.showLoginScreen();
+                    this.showNotification('Logged out successfully', 'success');
+                }
+            }
+
+            showLoginScreen() {
+                const loginScreen = document.getElementById('extensionLoginScreen');
+                const mainScreen = document.getElementById('extensionMainScreen');
+                const loadingScreen = document.getElementById('extensionLoadingScreen');
+
+                if (loginScreen) loginScreen.style.display = 'block';
+                if (mainScreen) mainScreen.style.display = 'none';
+                if (loadingScreen) loadingScreen.style.display = 'none';
+            }
+
+            showMainScreen() {
+                const loginScreen = document.getElementById('extensionLoginScreen');
+                const mainScreen = document.getElementById('extensionMainScreen');
+                const loadingScreen = document.getElementById('extensionLoadingScreen');
+
+                if (loginScreen) loginScreen.style.display = 'none';
+                if (mainScreen) mainScreen.style.display = 'block';
+                if (loadingScreen) loadingScreen.style.display = 'none';
+            }
+
+            showLoadingScreen() {
+                const loginScreen = document.getElementById('extensionLoginScreen');
+                const mainScreen = document.getElementById('extensionMainScreen');
+                const loadingScreen = document.getElementById('extensionLoadingScreen');
+
+                if (loginScreen) loginScreen.style.display = 'none';
+                if (mainScreen) mainScreen.style.display = 'none';
+                if (loadingScreen) loadingScreen.style.display = 'block';
+            }
+
+            showNotification(message, type = 'info') {
+                // Create notification element
+                const notification = document.createElement('div');
+                notification.className = `notification ${type}`;
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    color: white;
+                    font-size: 14px;
+                    z-index: 10000;
+                    max-width: 300px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                `;
+
+                switch (type) {
+                    case 'success':
+                        notification.style.background = '#28a745';
+                        break;
+                    case 'error':
+                        notification.style.background = '#dc3545';
+                        break;
+                    case 'warning':
+                        notification.style.background = '#ffc107';
+                        notification.style.color = '#333';
+                        break;
+                    default:
+                        notification.style.background = '#17a2b8';
+                }
+
+                notification.textContent = message;
+                document.body.appendChild(notification);
+
+                // Remove after 4 seconds
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 4000);
+            }
+        }
+
+        // Initialize the Extension Interface when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            // Wait a bit for other scripts to load
+            setTimeout(() => {
+                window.webExtensionInterface = new WebExtensionInterface();
+                console.log('🚀 Web Extension Interface initialized');
+            }, 1000);
+        });
     </script>
 </body>
 </html>
