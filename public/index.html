@@ -1055,7 +1055,7 @@
     <!-- Subscription Modal -->
     <div id="subscriptionModal" class="modal">
         <div class="modal-content" style="max-width: 600px;">
-            <span class="close" id="subscriptionModalClose">&times;</span>
+            <span class="close subscription-modal-close">&times;</span>
             <h2>🚀 Subscribe to Premium AutoScroll</h2>
             <p style="text-align: center; color: #666; margin-bottom: 30px;">₹9/month - Unlimited auto-scrolling with automatic renewal</p>
             
@@ -1093,11 +1093,6 @@
                            style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 5px;">
                     <small style="color: #666;">Enter your UPI ID (e.g., yourname@paytm, yourname@googlepay)</small>
                 </div>
-
-                <!-- Test button for debugging -->
-                <button type="button" onclick="alert('Test button works!'); console.log('Test button clicked');" style="width: 100%; padding: 10px; margin: 10px 0; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                    🧪 Test Button (Debug)
-                </button>
 
                 <button id="createMandateBtn" type="button" class="submit-btn" style="width: 100%; margin-top: 20px; cursor: pointer;">
                     🔄 Create AutoPay Subscription
@@ -1723,7 +1718,7 @@
                         statusText = 'Active';
                         actions = `
                             <div class="subscription-actions">
-                                <button class="btn-danger" data-action="cancel-mandate" data-mandate-id="${mandateData.mandateId}">
+                                <button class="btn-danger cancel-mandate-btn" data-mandate-id="${mandateData.mandateId}">
                                     Cancel Subscription
                                 </button>
                             </div>
@@ -1735,10 +1730,10 @@
                         statusText = 'Pending Setup';
                         actions = `
                             <div class="subscription-actions">
-                                <button class="btn-success" data-action="check-status" data-mandate-id="${mandateData.mandateId}" style="cursor: pointer;">
+                                <button class="btn-success check-status-btn" data-mandate-id="${mandateData.mandateId}" style="cursor: pointer;">
                                     Check Status
                                 </button>
-                                <button class="btn-secondary" data-action="show-qr" data-mandate-id="${mandateData.mandateId}" style="cursor: pointer;">
+                                <button class="btn-secondary show-qr-btn" data-mandate-id="${mandateData.mandateId}" style="cursor: pointer;">
                                     Show QR Code
                                 </button>
                             </div>
@@ -1750,7 +1745,7 @@
                         statusText = 'Cancelled';
                         actions = `
                             <div class="subscription-actions">
-                                <button class="btn-success" data-action="create-new-mandate">
+                                <button class="btn-success create-new-mandate-btn">
                                     Create New Subscription
                                 </button>
                             </div>
@@ -1769,112 +1764,66 @@
                                 <p><strong>Status:</strong> ${mandateData.status}</p>
                                 ${mandateData.nextChargeDate ? `<p><strong>Next Charge:</strong> ${new Date(mandateData.nextChargeDate).toLocaleDateString()}</p>` : ''}
                             </div>
-                            
-                            <!-- Debug Test Buttons -->
-                            <div style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
-                                <p style="font-size: 12px; margin: 5px 0;"><strong>🧪 Debug Test Buttons:</strong></p>
-                                <button data-action="test-direct" style="background: #3498db; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
-                                    Test Direct Click
-                                </button>
-                                <button data-action="test-check-status" data-mandate-id="${mandateData.mandateId}" style="background: #27ae60; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
-                                    Test Check Status
-                                </button>
-                                <button data-action="test-show-qr" data-mandate-id="${mandateData.mandateId}" style="background: #f39c12; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
-                                    Test Show QR
-                                </button>
-                            </div>
-                            
                             ${actions}
                         </div>
                     `;
-                }
-                
-                // Set up event listeners for dynamically created buttons
-                this.setupDynamicButtonListeners();
-            }
-
-            setupDynamicButtonListeners() {
-                // Use event delegation to handle dynamically created buttons
-                const statusContent = document.getElementById('statusContent');
-                if (statusContent) {
-                    // Remove any existing listeners
-                    statusContent.removeEventListener('click', this.handleDynamicButtonClick);
                     
-                    // Add new listener
-                    statusContent.addEventListener('click', this.handleDynamicButtonClick.bind(this));
+                    // Add event listeners for dynamically created buttons
+                    this.attachMandateButtonListeners();
                 }
             }
 
-            handleDynamicButtonClick(event) {
-                const button = event.target.closest('button[data-action]');
-                if (!button) return;
+            attachMandateButtonListeners() {
+                console.log('🔗 Attaching mandate button listeners...');
+                
+                // Check Status buttons
+                const checkStatusBtns = document.querySelectorAll('.check-status-btn');
+                checkStatusBtns.forEach(btn => {
+                    const mandateId = btn.getAttribute('data-mandate-id');
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        console.log('🔍 Check Status clicked for mandate:', mandateId);
+                        checkMandateStatus(mandateId);
+                    });
+                    console.log('✅ Check Status listener added for mandate:', mandateId);
+                });
 
-                const action = button.getAttribute('data-action');
-                const mandateId = button.getAttribute('data-mandate-id');
+                // Show QR buttons
+                const showQrBtns = document.querySelectorAll('.show-qr-btn');
+                showQrBtns.forEach(btn => {
+                    const mandateId = btn.getAttribute('data-mandate-id');
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        console.log('📱 Show QR clicked for mandate:', mandateId);
+                        showMandateQR(mandateId);
+                    });
+                    console.log('✅ Show QR listener added for mandate:', mandateId);
+                });
 
-                console.log('🔘 Dynamic button clicked:', action, 'mandateId:', mandateId);
+                // Cancel Mandate buttons
+                const cancelBtns = document.querySelectorAll('.cancel-mandate-btn');
+                cancelBtns.forEach(btn => {
+                    const mandateId = btn.getAttribute('data-mandate-id');
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        console.log('❌ Cancel Mandate clicked for mandate:', mandateId);
+                        cancelMandate(mandateId);
+                    });
+                    console.log('✅ Cancel Mandate listener added for mandate:', mandateId);
+                });
 
-                switch (action) {
-                    case 'check-status':
-                        console.log('🔍 Executing checkMandateStatus for:', mandateId);
-                        if (window.checkMandateStatus) {
-                            window.checkMandateStatus(mandateId);
-                        } else {
-                            console.error('checkMandateStatus function not found');
-                        }
-                        break;
-                        
-                    case 'show-qr':
-                        console.log('📱 Executing showMandateQR for:', mandateId);
-                        if (window.showMandateQR) {
-                            window.showMandateQR(mandateId);
-                        } else {
-                            console.error('showMandateQR function not found');
-                        }
-                        break;
-                        
-                    case 'cancel-mandate':
-                        console.log('❌ Executing cancelMandate for:', mandateId);
-                        if (window.cancelMandate) {
-                            window.cancelMandate(mandateId);
-                        } else {
-                            console.error('cancelMandate function not found');
-                        }
-                        break;
-                        
-                    case 'create-new-mandate':
-                        console.log('🆕 Executing createNewMandate');
-                        if (window.createNewMandate) {
-                            window.createNewMandate();
-                        } else {
-                            console.error('createNewMandate function not found');
-                        }
-                        break;
-                        
-                    case 'test-direct':
-                        console.log('🧪 Direct test clicked');
-                        alert('Direct test button works!');
-                        break;
-                        
-                    case 'test-check-status':
-                        console.log('🧪 Test check status clicked for:', mandateId);
-                        alert('Test Check Status function called! Mandate ID: ' + mandateId);
-                        if (window.checkMandateStatus) {
-                            window.checkMandateStatus(mandateId);
-                        }
-                        break;
-                        
-                    case 'test-show-qr':
-                        console.log('🧪 Test show QR clicked for:', mandateId);
-                        alert('Test Show QR function called! Mandate ID: ' + mandateId);
-                        if (window.showMandateQR) {
-                            window.showMandateQR(mandateId);
-                        }
-                        break;
-                        
-                    default:
-                        console.log('🤷 Unknown action:', action);
-                }
+                // Create New Mandate buttons
+                const createNewBtns = document.querySelectorAll('.create-new-mandate-btn');
+                createNewBtns.forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        console.log('🆕 Create New Mandate clicked');
+                        createNewMandate();
+                    });
+                    console.log('✅ Create New Mandate listener added');
+                });
+
+                console.log('🎉 All mandate button listeners attached successfully!');
             }
 
             updateUI() {
@@ -2632,21 +2581,25 @@
                 // Add new listener
                 createMandateBtn.addEventListener('click', handleCreateMandate);
                 
+                // Also add onclick as fallback
+                createMandateBtn.onclick = handleCreateMandate;
+                
                 console.log('Event listeners added successfully');
             } else {
                 console.error('Create mandate button not found!');
             }
 
-            // Add event listener for subscription modal close button
-            const closeBtn = document.getElementById('subscriptionModalClose');
-            if (closeBtn) {
-                console.log('Close button found, adding event listener...');
-                closeBtn.addEventListener('click', function() {
-                    console.log('Close button clicked');
+            // Add subscription modal close button listener
+            const subscriptionModalClose = document.querySelector('.subscription-modal-close');
+            if (subscriptionModalClose) {
+                subscriptionModalClose.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('Subscription modal close clicked');
                     closeSubscriptionModal();
                 });
+                console.log('Subscription modal close listener added');
             } else {
-                console.error('Close button not found!');
+                console.error('Subscription modal close button not found!');
             }
         });
 
