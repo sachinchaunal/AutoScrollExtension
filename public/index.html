@@ -1735,10 +1735,10 @@
                         statusText = 'Pending Setup';
                         actions = `
                             <div class="subscription-actions">
-                                <button class="btn-success" onclick="checkMandateStatus('${mandateData.mandateId}')">
+                                <button class="btn-success" onclick="console.log('Check Status clicked for mandate: ${mandateData.mandateId}'); checkMandateStatus('${mandateData.mandateId}')" style="cursor: pointer;">
                                     Check Status
                                 </button>
-                                <button class="btn-secondary" onclick="showMandateQR('${mandateData.mandateId}')">
+                                <button class="btn-secondary" onclick="console.log('Show QR clicked for mandate: ${mandateData.mandateId}'); showMandateQR('${mandateData.mandateId}')" style="cursor: pointer;">
                                     Show QR Code
                                 </button>
                             </div>
@@ -1769,6 +1769,21 @@
                                 <p><strong>Status:</strong> ${mandateData.status}</p>
                                 ${mandateData.nextChargeDate ? `<p><strong>Next Charge:</strong> ${new Date(mandateData.nextChargeDate).toLocaleDateString()}</p>` : ''}
                             </div>
+                            
+                            <!-- Debug Test Buttons -->
+                            <div style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">
+                                <p style="font-size: 12px; margin: 5px 0;"><strong>🧪 Debug Test Buttons:</strong></p>
+                                <button onclick="alert('Direct test button works!'); console.log('Direct test clicked');" style="background: #3498db; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
+                                    Test Direct Click
+                                </button>
+                                <button onclick="window.checkMandateStatus('${mandateData.mandateId}')" style="background: #27ae60; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
+                                    Test Check Status
+                                </button>
+                                <button onclick="window.showMandateQR('${mandateData.mandateId}')" style="background: #f39c12; color: white; padding: 5px 10px; margin: 2px; border: none; border-radius: 3px; cursor: pointer;">
+                                    Test Show QR
+                                </button>
+                            </div>
+                            
                             ${actions}
                         </div>
                     `;
@@ -2091,13 +2106,23 @@
         window.createWebUpiMandate = createWebUpiMandate;
         window.closeSubscriptionModal = closeSubscriptionModal;
         window.handleCreateMandate = handleCreateMandate;
+        window.checkMandateStatus = checkMandateStatus;
+        window.showMandateQR = showMandateQR;
+        window.cancelMandate = cancelMandate;
+        window.createNewMandate = createNewMandate;
+        window.fetchMandateQR = fetchMandateQR;
         
         // Debug information
         console.log('🚀 AutoScroll Website JavaScript Loaded');
         console.log('Available functions:', {
             createWebUpiMandate: typeof window.createWebUpiMandate,
             closeSubscriptionModal: typeof window.closeSubscriptionModal,
-            handleCreateMandate: typeof window.handleCreateMandate
+            handleCreateMandate: typeof window.handleCreateMandate,
+            checkMandateStatus: typeof window.checkMandateStatus,
+            showMandateQR: typeof window.showMandateQR,
+            cancelMandate: typeof window.cancelMandate,
+            createNewMandate: typeof window.createNewMandate,
+            fetchMandateQR: typeof window.fetchMandateQR
         });
         
         // Check if elements exist when page loads
@@ -2177,7 +2202,8 @@
         }
 
         async function checkMandateStatus(mandateId) {
-            console.log('Checking mandate status for ID:', mandateId);
+            console.log('🔍 checkMandateStatus called with mandateId:', mandateId);
+            alert('🔍 Check Status function called! Mandate ID: ' + mandateId);
             
             try {
                 showSubscriptionLoading(true);
@@ -2301,7 +2327,8 @@
         }
 
         function showMandateQR(mandateId) {
-            console.log('Showing mandate QR for ID:', mandateId);
+            console.log('📱 showMandateQR called with mandateId:', mandateId);
+            alert('📱 Show QR function called! Mandate ID: ' + mandateId);
             
             try {
                 // Show QR section for existing mandate
