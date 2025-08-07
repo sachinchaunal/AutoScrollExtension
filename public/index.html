@@ -2177,9 +2177,15 @@
         }
 
         async function checkMandateStatus(mandateId) {
+            console.log('Checking mandate status for ID:', mandateId);
+            
             try {
+                showSubscriptionLoading(true);
+                
                 const authData = localStorage.getItem('webAutoScrollAuth');
-                if (!authData) return;
+                if (!authData) {
+                    throw new Error('Please log in first');
+                }
 
                 const parsed = JSON.parse(authData);
                 const response = await fetch(`${window.location.origin}/api/upi-mandates/status/${parsed.userId}`, {
@@ -2188,14 +2194,38 @@
                     }
                 });
 
+                console.log('Status check response status:', response.status);
+
                 if (response.ok) {
                     const result = await response.json();
-                    if (result.success && window.webAutoScrollInstance) {
-                        window.webAutoScrollInstance.showExistingMandateStatus(result.data);
+                    console.log('Status check result:', result);
+                    
+                    if (result.success) {
+                        if (window.webAutoScrollInstance) {
+                            window.webAutoScrollInstance.showExistingMandateStatus(result.data);
+                        }
+                        
+                        if (result.data.status === 'ACTIVE') {
+                            showGlobalNotification('Success!', 'Your subscription is now active!');
+                            return true;
+                        } else if (result.data.status === 'PENDING') {
+                            showGlobalNotification('Still Pending', 'Payment is still being processed. Please try again in a few moments.');
+                        } else {
+                            showGlobalNotification('Status Updated', `Subscription status: ${result.data.status}`);
+                        }
+                        return false;
+                    } else {
+                        throw new Error(result.message || 'Failed to check status');
                     }
+                } else {
+                    throw new Error(`Server error: ${response.status}`);
                 }
             } catch (error) {
                 console.error('Status check error:', error);
+                alert('❌ Error checking mandate status: ' + error.message);
+                return false;
+            } finally {
+                showSubscriptionLoading(false);
             }
         }
 
@@ -2271,8 +2301,91 @@
         }
 
         function showMandateQR(mandateId) {
-            // This would typically fetch the QR code for existing mandate
-            alert('QR Code display for existing mandates coming soon!');
+            console.log('Showing mandate QR for ID:', mandateId);
+            
+            try {
+                // Show QR section for existing mandate
+                const upiSection = document.getElementById('upiInputSection');
+                const statusSection = document.getElementById('mandateStatus');
+                const qrSection = document.getElementById('mandateQrSection');
+
+                if (upiSection) {
+                    upiSection.style.display = 'none';
+                    console.log('Hidden UPI section');
+                }
+                if (statusSection) {
+                    statusSection.style.display = 'none';
+                    console.log('Hidden status section');
+                }
+                if (qrSection) {
+                    qrSection.style.display = 'block';
+                    console.log('Showing QR section');
+                }
+
+                // Show loading message
+                const qrContainer = document.getElementById('qrCodeContainer');
+                if (qrContainer) {
+                    qrContainer.innerHTML = '<div class="web-spinner" style="margin: 20px auto;"></div><p>Loading QR code...</p>';
+                    console.log('Showing loading in QR container');
+                }
+
+                // Fetch QR code for existing mandate
+                fetchMandateQR(mandateId);
+            } catch (error) {
+                console.error('Error showing mandate QR:', error);
+                alert('❌ Error loading QR code: ' + error.message);
+            }
+        }
+
+        async function fetchMandateQR(mandateId) {
+            try {
+                const authData = localStorage.getItem('webAutoScrollAuth');
+                if (!authData) {
+                    throw new Error('Please log in first');
+                }
+
+                const parsed = JSON.parse(authData);
+                console.log('Fetching QR for mandate:', mandateId);
+
+                const response = await fetch(`${window.location.origin}/api/upi-mandates/qr/${mandateId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${parsed.token}`
+                    }
+                });
+
+                console.log('QR fetch response status:', response.status);
+
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch QR code: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('QR fetch result:', result);
+
+                if (result.success && result.data) {
+                    const qrContainer = document.getElementById('qrCodeContainer');
+                    const paymentLink = document.getElementById('paymentLink');
+                    
+                    if (qrContainer && result.data.qrCodeImage) {
+                        qrContainer.innerHTML = `<img src="${result.data.qrCodeImage}" alt="UPI QR Code" style="max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 8px;">`;
+                        console.log('QR code image set');
+                    }
+                    
+                    if (paymentLink && result.data.paymentUrl) {
+                        paymentLink.href = result.data.paymentUrl;
+                        paymentLink.target = '_blank';
+                        console.log('Payment link set:', result.data.paymentUrl);
+                    }
+                } else {
+                    throw new Error(result.message || 'Failed to generate QR code');
+                }
+            } catch (error) {
+                console.error('Fetch mandate QR error:', error);
+                const qrContainer = document.getElementById('qrCodeContainer');
+                if (qrContainer) {
+                    qrContainer.innerHTML = `<p style="color: #e74c3c;">❌ Error loading QR code: ${error.message}</p>`;
+                }
+            }
         }
 
         function showSubscriptionLoading(show) {

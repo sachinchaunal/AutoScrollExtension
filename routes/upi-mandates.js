@@ -402,6 +402,44 @@ router.get('/status/:userId', async (req, res) => {
     }
 });
 
+// Get QR code for existing mandate
+router.get('/qr/:mandateId', async (req, res) => {
+    try {
+        const { mandateId } = req.params;
+
+        const mandate = await UpiMandate.findOne({
+            mandateId,
+            status: 'PENDING'
+        });
+
+        if (!mandate) {
+            return res.status(404).json({
+                success: false,
+                message: 'No pending mandate found with this ID'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                mandateId: mandate.mandateId,
+                qrCodeImage: mandate.qrCodeImage,
+                qrCodeData: mandate.qrCodeData,
+                paymentUrl: mandate.qrCodeData,
+                amount: mandate.amount,
+                status: mandate.status
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching QR code',
+            error: error.message
+        });
+    }
+});
+
 // Razorpay webhook handler for mandate events
 router.post('/webhook', async (req, res) => {
     try {
