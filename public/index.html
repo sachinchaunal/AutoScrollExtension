@@ -869,14 +869,11 @@
         <section class="download-section">
             <h2>📥 Get AutoScroll Extension</h2>
             <p>Join thousands of users who have enhanced their browsing experience</p>
-            <button class="download-btn" onclick="showDownloadInstructions()">
-                🌐 Chrome Web Store (Coming Soon)
+            <button class="download-btn" id="chromeStoreBtn">
+                🌐 Chrome/Edge Web Store (Coming Soon)
             </button>
-            <button class="download-btn" onclick="downloadExtension()">
-                🚀 Early Access - Windows Installer
-            </button>
-            <button class="download-btn" onclick="downloadPowerShellInstaller()">
-                💻 PowerShell Installer (Recommended)
+            <button class="download-btn" id="windowsInstallerBtn">
+                � Early Access - Download ZIP
             </button>
         </section>
 
@@ -1163,21 +1160,14 @@
         
         // Download extension function
         function downloadExtension() {
-            alert('🚀 Windows Batch Installer\n\n📋 What you\'ll get:\n• AutoScroll-Extension-Installer.bat file\n• Double-click to automatically install\n• Creates extension files on your computer\n• Opens Chrome extensions page\n• Guides you through final installation\n\n✅ Simple process:\n1. Download and double-click the .bat file\n2. Follow the installer prompts\n3. Click "Load unpacked" in Chrome\n\n💡 Works on all Windows systems!');
+            alert('� AutoScroll Extension ZIP Download\n\n📋 What you\'ll get:\n• Complete AutoScroll Extension with all features\n• All extension files in a convenient ZIP package\n• Detailed installation guide included\n• Ready-to-install extension folder\n\n✅ Installation process:\n1. Download and extract the ZIP file\n2. Open Google Chrome\n3. Go to chrome://extensions/\n4. Enable "Developer mode" (toggle in top-right)\n5. Click "Load unpacked" and select the extracted folder\n\n💡 Much cleaner than batch files - just download, extract, and install!');
             
             // Trigger download
             window.location.href = '/api/download-extension';
         }
         
-        function downloadPowerShellInstaller() {
-            alert('💻 PowerShell Installer (Recommended)\n\n🎯 Why PowerShell?\n• More secure and modern\n• Better error handling\n• Colorful installation process\n• Works on Windows 10/11\n\n📋 What you\'ll get:\n• AutoScroll-Extension-Installer.ps1 file\n• Right-click → "Run with PowerShell"\n• Automatic installation with guidance\n• Professional installation experience\n\n✅ Recommended for most users!');
-            
-            // Trigger PowerShell installer download
-            window.location.href = '/api/download-installer-ps1';
-        }
-        
         function showDownloadInstructions() {
-            alert('🌐 Chrome Web Store\n\nOur extension is currently under review for the Chrome Web Store.\n\n📅 Expected availability: Soon\n🚀 For immediate access, choose one of our installers:\n\n💻 PowerShell Installer (Recommended)\n🚀 Windows Batch Installer\n\n💡 Both installers set up everything automatically!');
+            alert('🌐 Chrome Web Store\n\nOur extension is currently under review for the Chrome Web Store.\n\n📅 Expected availability: Soon\n🚀 For immediate access, use our ZIP download for early access!\n\n💡 Clean and simple - no batch files needed!');
         }
         
         // Form submissions
@@ -2600,6 +2590,31 @@
                 console.log('Subscription modal close listener added');
             } else {
                 console.error('Subscription modal close button not found!');
+            }
+
+            // Add download button event listeners
+            const chromeStoreBtn = document.getElementById('chromeStoreBtn');
+            if (chromeStoreBtn) {
+                chromeStoreBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('Chrome Store button clicked');
+                    showDownloadInstructions();
+                });
+                console.log('Chrome Store button listener added');
+            } else {
+                console.error('Chrome Store button not found!');
+            }
+
+            const windowsInstallerBtn = document.getElementById('windowsInstallerBtn');
+            if (windowsInstallerBtn) {
+                windowsInstallerBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('ZIP Download button clicked');
+                    downloadExtension();
+                });
+                console.log('ZIP Download button listener added');
+            } else {
+                console.error('ZIP Download button not found!');
             }
         });
 
