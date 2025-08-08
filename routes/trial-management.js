@@ -142,20 +142,6 @@ router.get('/check-access/:userId', async (req, res) => {
             }
         } else if (user.subscriptionStatus === 'active') {
             message = 'Subscription active';
-        } else if (user.subscriptionStatus === 'cancelled') {
-            // Calculate remaining days for cancelled subscription
-            let remainingDays = 0;
-            if (user.subscriptionExpiry) {
-                const now = new Date();
-                const expiry = new Date(user.subscriptionExpiry);
-                remainingDays = Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24)));
-            }
-            
-            if (remainingDays > 0) {
-                message = `Subscription cancelled - ${remainingDays} days remaining`;
-            } else {
-                message = 'Subscription expired - please renew';
-            }
         } else if (user.subscriptionStatus === 'expired') {
             message = 'Subscription expired - please renew';
         }

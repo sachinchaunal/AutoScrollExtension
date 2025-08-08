@@ -79,19 +79,9 @@ const userSchema = new mongoose.Schema({
     lastPaymentDate: {
         type: Date
     },
-    hasAutoRenewal: {
-        type: Boolean,
-        default: false
-    },
     autoPayEnabled: {
         type: Boolean,
         default: false
-    },
-    upiMandateId: {
-        type: String
-    },
-    cancelledAt: {
-        type: Date
     },
 
     // User Settings
@@ -193,16 +183,9 @@ userSchema.virtual('canUseExtension').get(function() {
         return false;
     }
     
-    // Active subscription (still valid)
+    // Active subscription
     if (this.subscriptionStatus === 'active' && this.subscriptionExpiry) {
         return new Date() < this.subscriptionExpiry;
-    }
-    
-    // Cancelled subscription (but still in valid period) - CRITICAL FIX!
-    if (this.subscriptionStatus === 'cancelled' && this.subscriptionExpiry) {
-        const isStillValid = new Date() < this.subscriptionExpiry;
-        console.log(`Cancelled subscription check: ${this.email}, valid until ${this.subscriptionExpiry}, still valid: ${isStillValid}`);
-        return isStillValid; // Allow access until expiry even if cancelled
     }
     
     // Active trial
@@ -219,7 +202,7 @@ userSchema.virtual('daysUntilExpiry').get(function() {
     
     if (this.subscriptionStatus === 'trial' && this.trialEndDate) {
         expiryDate = this.trialEndDate;
-    } else if ((this.subscriptionStatus === 'active' || this.subscriptionStatus === 'cancelled') && this.subscriptionExpiry) {
+    } else if (this.subscriptionStatus === 'active' && this.subscriptionExpiry) {
         expiryDate = this.subscriptionExpiry;
     } else {
         return 0;

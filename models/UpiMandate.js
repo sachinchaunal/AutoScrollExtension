@@ -13,7 +13,7 @@ const upiMandateSchema = new mongoose.Schema({
     },
     upiId: {
         type: String,
-        required: true
+        required: false // Optional for AutoPay subscriptions where UPI ID is provided later
     },
     merchantVpa: {
         type: String,
@@ -49,7 +49,7 @@ const upiMandateSchema = new mongoose.Schema({
     },
     qrCodeData: {
         type: String,
-        required: true
+        required: false // Optional for AutoPay subscriptions that use Razorpay URLs instead
     },
     qrCodeImage: {
         type: String // Base64 encoded QR code image
@@ -64,6 +64,15 @@ const upiMandateSchema = new mongoose.Schema({
     },
     razorpaySubscriptionId: {
         type: String
+    },
+    razorpayCustomerId: {
+        type: String // Customer ID for AutoPay subscriptions
+    },
+    activatedAt: {
+        type: Date // When autopay was activated
+    },
+    cancelledAt: {
+        type: Date // When autopay was cancelled
     },
     approvalReference: {
         type: String // Reference from UPI app when mandate is approved

@@ -211,11 +211,10 @@ router.post('/create-mandate', async (req, res) => {
                 mandate_id: mandateId,
                 user_id: userId,
                 user_upi_id: userUpiId,
-                purpose: 'AutoScroll Extension Subscription - UPI AutoPay Setup'
+                purpose: 'AutoScroll Extension Subscription'
             },
             callback_url: `${CONFIG.apiBaseUrl}/api/upi-mandates/callback`,
             callback_method: 'get',
-            upi_link: true, // CRITICAL: Enable UPI-specific features
             options: {
                 checkout: {
                     method: {
@@ -539,7 +538,7 @@ async function handlePaymentLinkPaid(payload) {
                 customer_notify: 1,
                 quantity: 1,
                 total_count: CONFIG.subscriptionTotalCount,
-                start_at: Math.floor(Date.now() / 1000) + 60, // Start in 1 minute (allows immediate cancellation)
+                start_at: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60), // Start next month
                 notes: {
                     mandate_id: mandate.mandateId,
                     user_id: mandate.userId
@@ -560,7 +559,6 @@ async function handlePaymentLinkPaid(payload) {
             if (user) {
                 user.subscriptionStatus = 'active';
                 user.hasAutoRenewal = true;
-                user.autoPayEnabled = true; // Also set this for backward compatibility
                 user.lastPaymentDate = new Date();
                 user.upiMandateId = mandate.mandateId;
                 
@@ -571,36 +569,24 @@ async function handlePaymentLinkPaid(payload) {
                 
                 await user.save();
                 console.log('Updated user subscription status to active:', user.email);
-                console.log('User hasAutoRenewal set to:', user.hasAutoRenewal);
             }
 
-            // Record initial payment (check for duplicates first)
-            const existingPayment = await Payment.findOne({ 
-                transactionId: payment.entity.id 
+            // Record initial payment
+            const paymentRecord = new Payment({
+                userId: mandate.userId,
+                transactionId: payment.entity.id,
+                razorpayPaymentId: payment.entity.id,
+                amount: payment.entity.amount / 100, // Convert from paise to rupees
+                status: 'completed',
+                validatedAt: new Date(),
+                metadata: {
+                    mandateId: mandate.mandateId,
+                    subscriptionId: subscription.id,
+                    type: 'mandate_setup',
+                    platform: 'razorpay_mandate'
+                }
             });
-            
-            if (!existingPayment) {
-                const paymentRecord = new Payment({
-                    userId: mandate.userId,
-                    transactionId: payment.entity.id,
-                    razorpayPaymentId: payment.entity.id,
-                    amount: payment.entity.amount / 100, // Convert from paise to rupees
-                    status: 'completed',
-                    paymentMethod: 'upi',
-                    subscriptionType: 'monthly',
-                    validatedAt: new Date(),
-                    metadata: {
-                        mandateId: mandate.mandateId,
-                        subscriptionId: subscription.id,
-                        type: 'mandate_setup',
-                        platform: 'razorpay_mandate'
-                    }
-                });
-                await paymentRecord.save();
-                console.log('Payment record created for transaction:', payment.entity.id);
-            } else {
-                console.log('Payment record already exists for transaction:', payment.entity.id);
-            }
+            await paymentRecord.save();
             
             console.log('Payment link paid processed successfully for mandate:', mandate.mandateId);
         } else {
@@ -786,7 +772,7 @@ router.get('/callback', async (req, res) => {
                     customer_notify: 1,
                     quantity: 1,
                     total_count: CONFIG.subscriptionTotalCount,
-                    start_at: Math.floor(Date.now() / 1000) + 60, // Start in 1 minute (allows immediate cancellation)
+                    start_at: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60), // Start next month
                     notes: {
                         mandate_id: mandate.mandateId,
                         user_id: mandate.userId
@@ -885,15 +871,6 @@ router.post('/cancel-mandate', async (req, res) => {
                 console.log(`Razorpay subscription cancelled: ${mandate.razorpaySubscriptionId}`);
             } catch (razorpayError) {
                 console.error('Error cancelling Razorpay subscription:', razorpayError);
-                
-                // Handle specific Razorpay errors
-                if (razorpayError.error && razorpayError.error.code === 'BAD_REQUEST_ERROR') {
-                    if (razorpayError.error.description.includes('no billing cycle is going on')) {
-                        console.log('Subscription not started yet, marking as cancelled locally');
-                    } else {
-                        console.log('Razorpay cancellation failed, but continuing with local cancellation');
-                    }
-                }
                 // Continue with local cancellation even if Razorpay fails
             }
         }
@@ -901,30 +878,11 @@ router.post('/cancel-mandate', async (req, res) => {
         mandate.status = 'CANCELLED';
         await mandate.save();
 
-        // Update user subscription - IMPORTANT: Don't revoke access immediately
+        // Update user subscription
         const user = await User.findById(userId);
         if (user) {
-            // Cancel future renewals but preserve current subscription period
             user.hasAutoRenewal = false;
-            user.subscriptionStatus = 'cancelled'; // New status: cancelled but still valid
-            user.cancelledAt = new Date(); // Track when cancellation happened
-            
-            // Ensure subscription expiry is set (current period should remain valid)
-            if (!user.subscriptionExpiry) {
-                // If no expiry set, give them the remaining days from when subscription started
-                const expiry = new Date();
-                expiry.setDate(expiry.getDate() + 30); // Give full 30 days from now
-                user.subscriptionExpiry = expiry;
-            }
-            
-            // Don't change subscriptionExpiry - let them use remaining days!
-            
             await user.save();
-            
-            console.log(`Subscription cancelled for user ${user.email}:`);
-            console.log(`- Future renewals: STOPPED`);
-            console.log(`- Current access: VALID until ${user.subscriptionExpiry}`);
-            console.log(`- Days remaining: ${Math.ceil((new Date(user.subscriptionExpiry) - new Date()) / (1000 * 60 * 60 * 24))} days`);
         }
 
         res.json({
@@ -1233,11 +1191,11 @@ router.post('/refresh-status', async (req, res) => {
         }).sort({ createdAt: -1 });
 
         let subscriptionStatus = user.subscriptionStatus || 'trial';
-        let canUseExtension = user.canUseExtension; // Use the virtual property that handles all cases
+        let canUseExtension = true;
         let message = 'Status refreshed successfully';
 
-        // If user has active mandate, they should have active subscription (unless cancelled)
-        if (mandate && user.subscriptionStatus !== 'cancelled') {
+        // If user has active mandate, they should have active subscription
+        if (mandate) {
             if (user.subscriptionStatus !== 'active') {
                 user.subscriptionStatus = 'active';
                 user.hasAutoRenewal = true;
@@ -1251,10 +1209,9 @@ router.post('/refresh-status', async (req, res) => {
                 
                 await user.save();
                 subscriptionStatus = 'active';
-                canUseExtension = user.canUseExtension; // Update after save
                 message = 'Subscription status updated to active';
                 
-                console.log(`Force refreshed subscription status for user ${userId}: ${user.subscriptionStatus} -> active`);
+                console.log(`Force refreshed subscription status for user ${userId}: trial -> active`);
             }
         }
 
@@ -1264,7 +1221,7 @@ router.post('/refresh-status', async (req, res) => {
             const now = new Date();
             const trialEnd = new Date(user.trialEndDate);
             daysRemaining = Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)));
-        } else if ((subscriptionStatus === 'active' || subscriptionStatus === 'cancelled') && user.subscriptionExpiry) {
+        } else if (subscriptionStatus === 'active' && user.subscriptionExpiry) {
             const now = new Date();
             const expiry = new Date(user.subscriptionExpiry);
             daysRemaining = Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24)));
