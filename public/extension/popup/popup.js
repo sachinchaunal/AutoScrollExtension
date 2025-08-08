@@ -358,7 +358,17 @@ class AutoScrollPopup {
                 subscriptionStatus.style.display = 'block';
                 const subscriptionText = document.getElementById('subscriptionText');
                 if (subscriptionText) {
-                    subscriptionText.textContent = 'Premium subscription active';
+                    // Calculate days remaining for active subscription
+                    let daysText = 'Premium subscription active';
+                    if (this.subscriptionData.trialDaysRemaining && this.subscriptionData.trialDaysRemaining > 0) {
+                        daysText = `Premium active - ${this.subscriptionData.trialDaysRemaining} days remaining`;
+                    } else if (this.subscriptionData.subscriptionExpiry) {
+                        const now = new Date();
+                        const expiry = new Date(this.subscriptionData.subscriptionExpiry);
+                        const daysRemaining = Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24)));
+                        daysText = `Premium active - ${daysRemaining} days remaining`;
+                    }
+                    subscriptionText.textContent = daysText;
                 }
             }
             if (subscribeButton) {
