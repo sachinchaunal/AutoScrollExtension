@@ -896,11 +896,30 @@ router.post('/cancel-mandate', async (req, res) => {
         mandate.status = 'CANCELLED';
         await mandate.save();
 
-        // Update user subscription
+        // Update user subscription - IMPORTANT: Don't revoke access immediately
         const user = await User.findById(userId);
         if (user) {
+            // Cancel future renewals but preserve current subscription period
             user.hasAutoRenewal = false;
+            user.subscriptionStatus = 'cancelled'; // New status: cancelled but still valid
+            user.cancelledAt = new Date(); // Track when cancellation happened
+            
+            // Ensure subscription expiry is set (current period should remain valid)
+            if (!user.subscriptionExpiry) {
+                // If no expiry set, give them the remaining days from when subscription started
+                const expiry = new Date();
+                expiry.setDate(expiry.getDate() + 30); // Give full 30 days from now
+                user.subscriptionExpiry = expiry;
+            }
+            
+            // Don't change subscriptionExpiry - let them use remaining days!
+            
             await user.save();
+            
+            console.log(`Subscription cancelled for user ${user.email}:`);
+            console.log(`- Future renewals: STOPPED`);
+            console.log(`- Current access: VALID until ${user.subscriptionExpiry}`);
+            console.log(`- Days remaining: ${Math.ceil((new Date(user.subscriptionExpiry) - new Date()) / (1000 * 60 * 60 * 24))} days`);
         }
 
         res.json({
@@ -1209,11 +1228,11 @@ router.post('/refresh-status', async (req, res) => {
         }).sort({ createdAt: -1 });
 
         let subscriptionStatus = user.subscriptionStatus || 'trial';
-        let canUseExtension = true;
+        let canUseExtension = user.canUseExtension; // Use the virtual property that handles all cases
         let message = 'Status refreshed successfully';
 
-        // If user has active mandate, they should have active subscription
-        if (mandate) {
+        // If user has active mandate, they should have active subscription (unless cancelled)
+        if (mandate && user.subscriptionStatus !== 'cancelled') {
             if (user.subscriptionStatus !== 'active') {
                 user.subscriptionStatus = 'active';
                 user.hasAutoRenewal = true;
@@ -1227,9 +1246,10 @@ router.post('/refresh-status', async (req, res) => {
                 
                 await user.save();
                 subscriptionStatus = 'active';
+                canUseExtension = user.canUseExtension; // Update after save
                 message = 'Subscription status updated to active';
                 
-                console.log(`Force refreshed subscription status for user ${userId}: trial -> active`);
+                console.log(`Force refreshed subscription status for user ${userId}: ${user.subscriptionStatus} -> active`);
             }
         }
 
@@ -1239,7 +1259,7 @@ router.post('/refresh-status', async (req, res) => {
             const now = new Date();
             const trialEnd = new Date(user.trialEndDate);
             daysRemaining = Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)));
-        } else if (subscriptionStatus === 'active' && user.subscriptionExpiry) {
+        } else if ((subscriptionStatus === 'active' || subscriptionStatus === 'cancelled') && user.subscriptionExpiry) {
             const now = new Date();
             const expiry = new Date(user.subscriptionExpiry);
             daysRemaining = Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24)));
