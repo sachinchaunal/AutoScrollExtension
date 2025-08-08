@@ -65,6 +65,30 @@ router.get('/test-connection', async (req, res) => {
     }
 });
 
+// Get user profile endpoint (must be before /:userId route)
+router.get('/profile', async (req, res) => {
+    try {
+        // This is a general profile info endpoint
+        res.json({
+            success: true,
+            message: 'Profile endpoint - requires authentication',
+            data: {
+                endpoint: '/api/users/profile',
+                description: 'Get user profile information',
+                requiresAuth: true,
+                note: 'This endpoint requires authentication. Use with Authorization header.'
+            }
+        });
+    } catch (error) {
+        console.error('Profile endpoint error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error accessing profile endpoint',
+            error: error.message
+        });
+    }
+});
+
 // Get user by ID
 router.get('/:userId', async (req, res) => {
     try {

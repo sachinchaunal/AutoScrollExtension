@@ -130,6 +130,36 @@ router.get('/user/:userId', async (req, res) => {
     }
 });
 
+// Get subscription system status (general endpoint)
+router.get('/status', async (req, res) => {
+    try {
+        // Get general subscription system status
+        const totalUsers = await User.countDocuments();
+        const activeSubscriptions = await User.countDocuments({ isSubscriptionActive: true });
+        const trialUsers = await User.countDocuments({ subscriptionStatus: 'trial' });
+        
+        res.json({
+            success: true,
+            message: 'Subscription system status',
+            data: {
+                systemStatus: 'operational',
+                totalUsers,
+                activeSubscriptions,
+                trialUsers,
+                timestamp: new Date().toISOString(),
+                note: 'Use /status/:userId for specific user subscription status'
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching subscription status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch subscription system status',
+            error: error.message
+        });
+    }
+});
+
 // Get subscription status
 router.get('/status/:userId', async (req, res) => {
     try {

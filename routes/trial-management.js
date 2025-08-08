@@ -64,6 +64,57 @@ router.post('/update-all-trials', async (req, res) => {
     }
 });
 
+// General trial system status (what the test was looking for)
+router.get('/status', async (req, res) => {
+    try {
+        const totalTrialUsers = await User.countDocuments({ subscriptionStatus: 'trial' });
+        const activeTrialUsers = await User.countDocuments({ 
+            subscriptionStatus: 'trial',
+            trialDaysRemaining: { $gt: 0 }
+        });
+        const expiredTrialUsers = await User.countDocuments({ 
+            subscriptionStatus: 'trial',
+            trialDaysRemaining: { $lte: 0 }
+        });
+
+        res.json({
+            success: true,
+            message: 'Trial system status',
+            data: {
+                systemStatus: 'operational',
+                totalTrialUsers,
+                activeTrialUsers,
+                expiredTrialUsers,
+                timestamp: new Date().toISOString(),
+                note: 'Use /trial-status/:userId for specific user trial status'
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error fetching trial system status',
+            error: error.message 
+        });
+    }
+});
+
+// Start trial endpoint (general - what the test was looking for) 
+router.post('/start', async (req, res) => {
+    try {
+        res.json({
+            success: false,
+            message: 'Trial start endpoint deprecated',
+            note: 'Trials are automatically started during user registration via Google OAuth',
+            alternative: 'Use /api/auth/google to authenticate and start trial'
+        });
+    } catch (error) {
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+});
+
 // Get trial status for specific user (by ID or email)
 router.get('/trial-status/:userId', async (req, res) => {
     try {

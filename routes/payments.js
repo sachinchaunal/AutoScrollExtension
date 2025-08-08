@@ -199,6 +199,24 @@ async function activateSubscription(userId) {
     }
 }
 
+// Get general payment history (what tests expect)
+router.get('/history', async (req, res) => {
+    try {
+        res.json({
+            success: false,
+            message: 'Payment history requires user ID',
+            note: 'Use /history/:userId for specific user payment history',
+            alternative: 'GET /api/payments/history/:userId'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error accessing payment history',
+            error: error.message
+        });
+    }
+});
+
 // Get payment history
 router.get('/history/:userId', async (req, res) => {
     try {

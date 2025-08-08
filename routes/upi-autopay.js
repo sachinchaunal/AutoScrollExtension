@@ -21,6 +21,57 @@ const CONFIG = {
 };
 
 /**
+ * Get AutoPay plan configuration
+ * Returns plan details and pricing information
+ */
+router.get('/plan-config', async (req, res) => {
+    try {
+        // Verify Razorpay configuration
+        if (!CONFIG.planId) {
+            return res.status(500).json({
+                success: false,
+                message: 'AutoPay plan not configured'
+            });
+        }
+
+        // Get plan details from Razorpay
+        let planDetails = null;
+        try {
+            planDetails = await razorpay.plans.fetch(CONFIG.planId);
+        } catch (error) {
+            console.error('Error fetching plan from Razorpay:', error);
+        }
+
+        res.json({
+            success: true,
+            data: {
+                planId: CONFIG.planId,
+                amount: CONFIG.subscriptionPrice,
+                currency: 'INR',
+                interval: 'monthly',
+                description: 'AutoScroll Extension Premium Monthly Subscription',
+                planDetails: planDetails ? {
+                    id: planDetails.id,
+                    amount: planDetails.item.amount / 100, // Convert from paisa to rupees
+                    currency: planDetails.item.currency,
+                    interval: planDetails.period,
+                    intervalCount: planDetails.interval
+                } : null,
+                isConfigured: !!planDetails
+            }
+        });
+
+    } catch (error) {
+        console.error('Error in plan config:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get plan configuration',
+            error: error.message
+        });
+    }
+});
+
+/**
  * Create a proper UPI AutoPay mandate using Razorpay Subscriptions
  * This creates a true recurring payment setup, not just a payment link
  */

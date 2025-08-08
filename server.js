@@ -23,6 +23,7 @@ const deviceVerificationRoutes = require('./routes/device-verification');
 const { router: trialManagementRoutes } = require('./routes/trial-management');
 const websiteRoutes = require('./routes/website');
 const webAuthRoutes = require('./routes/web-auth');
+const deprecatedRoutes = require('./routes/deprecated');
 
 const app = express();
 
@@ -146,6 +147,7 @@ app.use('/api/upi-mandates', upiMandateRoutes);
 app.use('/api/upi-autopay', upiAutopayRoutes);
 app.use('/api/device', deviceVerificationRoutes);
 app.use('/api/trials', trialManagementRoutes);
+app.use('/api/deprecated', deprecatedRoutes);
 app.use('/api', websiteRoutes);
 
 // Individual page routes
