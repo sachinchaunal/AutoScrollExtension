@@ -79,9 +79,19 @@ const userSchema = new mongoose.Schema({
     lastPaymentDate: {
         type: Date
     },
+    hasAutoRenewal: {
+        type: Boolean,
+        default: false
+    },
     autoPayEnabled: {
         type: Boolean,
         default: false
+    },
+    upiMandateId: {
+        type: String
+    },
+    cancelledAt: {
+        type: Date
     },
 
     // User Settings

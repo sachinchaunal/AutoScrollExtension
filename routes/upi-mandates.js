@@ -211,10 +211,11 @@ router.post('/create-mandate', async (req, res) => {
                 mandate_id: mandateId,
                 user_id: userId,
                 user_upi_id: userUpiId,
-                purpose: 'AutoScroll Extension Subscription'
+                purpose: 'AutoScroll Extension Subscription - UPI AutoPay Setup'
             },
             callback_url: `${CONFIG.apiBaseUrl}/api/upi-mandates/callback`,
             callback_method: 'get',
+            upi_link: true, // CRITICAL: Enable UPI-specific features
             options: {
                 checkout: {
                     method: {
@@ -559,6 +560,7 @@ async function handlePaymentLinkPaid(payload) {
             if (user) {
                 user.subscriptionStatus = 'active';
                 user.hasAutoRenewal = true;
+                user.autoPayEnabled = true; // Also set this for backward compatibility
                 user.lastPaymentDate = new Date();
                 user.upiMandateId = mandate.mandateId;
                 
@@ -569,6 +571,7 @@ async function handlePaymentLinkPaid(payload) {
                 
                 await user.save();
                 console.log('Updated user subscription status to active:', user.email);
+                console.log('User hasAutoRenewal set to:', user.hasAutoRenewal);
             }
 
             // Record initial payment (check for duplicates first)
@@ -583,6 +586,8 @@ async function handlePaymentLinkPaid(payload) {
                     razorpayPaymentId: payment.entity.id,
                     amount: payment.entity.amount / 100, // Convert from paise to rupees
                     status: 'completed',
+                    paymentMethod: 'upi',
+                    subscriptionType: 'monthly',
                     validatedAt: new Date(),
                     metadata: {
                         mandateId: mandate.mandateId,
