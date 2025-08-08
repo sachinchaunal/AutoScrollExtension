@@ -102,6 +102,62 @@ class AutoScrollPopup {
         }
     }
 
+    async forceRefreshStatus() {
+        try {
+            console.log('AutoScroll Popup: Force refreshing subscription status...');
+            
+            // Show loading state
+            const refreshBtns = [
+                document.getElementById('refreshStatusBtn'),
+                document.getElementById('refreshStatusBtn2')
+            ];
+            
+            refreshBtns.forEach(btn => {
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '🔄 Refreshing...';
+                }
+            });
+            
+            // Call force refresh from background script
+            const response = await chrome.runtime.sendMessage({ action: 'forceRefreshStatus' });
+            
+            if (response && response.success) {
+                console.log('AutoScroll Popup: Force refresh successful:', response.data);
+                
+                // Reload subscription data
+                await this.loadSubscriptionData();
+                
+                // Update UI
+                await this.updateUI();
+                
+                // Show success message
+                this.showNotification('Subscription status refreshed successfully!', 'success');
+                
+            } else {
+                console.error('AutoScroll Popup: Force refresh failed:', response);
+                this.showNotification('Failed to refresh status. Please try again.', 'error');
+            }
+            
+        } catch (error) {
+            console.error('AutoScroll Popup: Force refresh error:', error);
+            this.showNotification('Error refreshing status. Please try again.', 'error');
+        } finally {
+            // Reset button states
+            const refreshBtns = [
+                document.getElementById('refreshStatusBtn'),
+                document.getElementById('refreshStatusBtn2')
+            ];
+            
+            refreshBtns.forEach(btn => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🔄 Refresh Status';
+                }
+            });
+        }
+    }
+
     async syncAutoScrollState() {
         try {
             // Check if we're on a supported platform
@@ -144,6 +200,17 @@ class AutoScrollPopup {
         const subscribeBtn = document.getElementById('subscribeButton');
         if (subscribeBtn) {
             subscribeBtn.addEventListener('click', () => this.openPaymentModal());
+        }
+
+        // Refresh Status Buttons
+        const refreshStatusBtn = document.getElementById('refreshStatusBtn');
+        if (refreshStatusBtn) {
+            refreshStatusBtn.addEventListener('click', () => this.forceRefreshStatus());
+        }
+        
+        const refreshStatusBtn2 = document.getElementById('refreshStatusBtn2');
+        if (refreshStatusBtn2) {
+            refreshStatusBtn2.addEventListener('click', () => this.forceRefreshStatus());
         }
 
         // Payment Modal Events

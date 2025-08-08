@@ -443,7 +443,7 @@ async function handleMessage(message, sender, sendResponse) {
         // Check authentication for most actions (except login/auth related)
         const authRequiredActions = [
             'startAutoScroll', 'stopAutoScroll', 'getStatus', 
-            'getSubscriptionStatus', 'logScrollEvent', 'checkFeatureAccess'
+            'getSubscriptionStatus', 'logScrollEvent', 'checkFeatureAccess', 'forceRefreshStatus'
         ];
         
         if (authRequiredActions.includes(message.action)) {
@@ -518,6 +518,11 @@ async function handleMessage(message, sender, sendResponse) {
             case 'getSubscriptionStatus':
                 const status = await getSubscriptionStatus();
                 sendResponse({ success: true, data: status });
+                break;
+            
+            case 'forceRefreshStatus':
+                const refreshResult = await forceRefreshSubscriptionStatus();
+                sendResponse({ success: true, data: refreshResult });
                 break;
 
             case 'logScrollEvent':
@@ -701,6 +706,83 @@ async function getSubscriptionStatus() {
             trialDaysRemaining: 0,
             canUseExtension: false,
             isSubscriptionActive: false,
+            error: error.message
+        };
+    }
+}
+
+async function forceRefreshSubscriptionStatus() {
+    try {
+        console.log('AutoScroll: Force refreshing subscription status...');
+        
+        // Check if user is authenticated
+        const authStatus = await googleAuth.checkLoginStatus();
+        if (!authStatus.isLoggedIn) {
+            return {
+                success: false,
+                message: 'User not authenticated',
+                subscriptionStatus: 'not_authenticated'
+            };
+        }
+
+        const userProfile = authStatus.profile;
+        
+        // Force sync with backend and refresh status
+        const result = await syncUserDataWithBackend();
+        
+        if (result.success) {
+            // Also call the refresh endpoint to force update
+            try {
+                const refreshResponse = await fetch(`${API_BASE}/api/upi-mandates/refresh-status`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        userId: result.data.userId
+                    })
+                });
+                
+                if (refreshResponse.ok) {
+                    const refreshData = await refreshResponse.json();
+                    console.log('AutoScroll: Force refresh completed:', refreshData.data);
+                    
+                    // Update local storage with refreshed data
+                    await chrome.storage.local.set({
+                        subscriptionStatus: refreshData.data.subscriptionStatus,
+                        subscriptionExpiry: refreshData.data.subscriptionExpiry,
+                        hasAutoRenewal: refreshData.data.hasAutoRenewal,
+                        lastRefreshTime: Date.now()
+                    });
+                    
+                    return {
+                        success: true,
+                        message: refreshData.message,
+                        data: refreshData.data
+                    };
+                }
+            } catch (refreshError) {
+                console.log('AutoScroll: Refresh endpoint error:', refreshError.message);
+                // Continue with basic sync result
+            }
+            
+            return {
+                success: true,
+                message: 'Basic sync completed',
+                data: result.data
+            };
+        } else {
+            return {
+                success: false,
+                message: result.message || 'Sync failed'
+            };
+        }
+        
+    } catch (error) {
+        console.error('AutoScroll: Error force refreshing status:', error);
+        return {
+            success: false,
+            message: error.message,
             error: error.message
         };
     }
@@ -914,6 +996,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         canUseFeature,
         getSubscriptionStatus,
-        syncUserDataWithBackend
+        syncUserDataWithBackend,
+        forceRefreshSubscriptionStatus
     };
 }
