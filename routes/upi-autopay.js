@@ -155,7 +155,6 @@ router.post('/create-autopay', async (req, res) => {
             quantity: 1,
             total_count: 60, // 5 years (60 months)
             customer_notify: 1,
-            start_at: Math.floor(Date.now() / 1000) + (24 * 60 * 60), // Start tomorrow
             notes: {
                 mandate_id: mandateId,
                 user_id: userId,
@@ -163,19 +162,38 @@ router.post('/create-autopay', async (req, res) => {
             }
         };
 
-        const subscription = await razorpay.subscriptions.create(subscriptionOptions);
-        console.log('Created Razorpay subscription:', subscription.id);
+        // Don't set start_at for immediate availability of payment URL
+        console.log('Creating Razorpay subscription with options:', JSON.stringify(subscriptionOptions, null, 2));
+        
+        let subscription;
+        try {
+            subscription = await razorpay.subscriptions.create(subscriptionOptions);
+            console.log('Created Razorpay subscription:', subscription.id);
+            console.log('Subscription short_url:', subscription.short_url);
+            console.log('Subscription status:', subscription.status);
+        } catch (subscriptionError) {
+            console.error('Subscription creation failed:', subscriptionError);
+            throw new Error(`Failed to create Razorpay subscription: ${subscriptionError.message}`);
+        }
 
         // Step 3: Create mandate record in database
+        const subscriptionStartDate = subscription.start_at ? 
+            new Date(subscription.start_at * 1000) : 
+            new Date(); // Fallback to current time
+            
+        const subscriptionEndDate = subscription.end_at ? 
+            new Date(subscription.end_at * 1000) : 
+            new Date(Date.now() + (60 * 30 * 24 * 60 * 60 * 1000)); // 60 months from now
+            
         const mandate = new UpiMandate({
             userId,
             mandateId,
             upiId: null, // Will be set when user provides UPI ID during payment
             merchantVpa: process.env.MERCHANT_UPI_ID,
             amount: CONFIG.subscriptionPrice,
-            startDate: new Date(subscription.start_at * 1000),
-            endDate: new Date(subscription.end_at * 1000),
-            nextChargeDate: new Date(subscription.start_at * 1000),
+            startDate: subscriptionStartDate,
+            endDate: subscriptionEndDate,
+            nextChargeDate: subscriptionStartDate,
             status: 'PENDING',
             razorpayCustomerId: customer.id,
             razorpaySubscriptionId: subscription.id,
@@ -189,6 +207,12 @@ router.post('/create-autopay', async (req, res) => {
 
         await mandate.save();
 
+        // Validate subscription URL
+        if (!subscription.short_url) {
+            console.error('Warning: Razorpay subscription created but no short_url provided');
+            console.log('Full subscription object:', JSON.stringify(subscription, null, 2));
+        }
+
         res.json({
             success: true,
             message: 'UPI AutoPay mandate created successfully',
@@ -196,18 +220,26 @@ router.post('/create-autopay', async (req, res) => {
                 mandateId: mandate.mandateId,
                 subscriptionId: subscription.id,
                 customerId: customer.id,
-                subscriptionUrl: subscription.short_url,
+                subscriptionUrl: subscription.short_url || null,
                 amount: mandate.amount,
                 startDate: mandate.startDate,
                 endDate: mandate.endDate,
                 nextChargeDate: mandate.nextChargeDate,
                 status: 'PENDING',
-                instructions: [
+                debug: {
+                    hasShortUrl: !!subscription.short_url,
+                    subscriptionStatus: subscription.status,
+                    subscriptionCreatedAt: subscription.created_at
+                },
+                instructions: subscription.short_url ? [
                     '1. Click the subscription link to setup UPI AutoPay',
                     '2. Select your UPI app and complete authentication',
                     '3. Approve the recurring payment mandate',
                     '4. Your subscription will be automatically charged monthly',
                     '5. You can cancel anytime from the extension settings'
+                ] : [
+                    'Subscription created but payment link not immediately available.',
+                    'Please check status again in a few moments or contact support.'
                 ]
             }
         });
