@@ -1,5 +1,4 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -13,12 +12,11 @@ const connectDB = require('./config/database');
 const { validateConfig } = require('./config/validateConfig');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
-const paymentRoutes = require('./routes/payments');
 const subscriptionRoutes = require('./routes/subscriptions');
+const razorpaySubscriptionRoutes = require('./routes/razorpay-subscriptions');
 const analyticsRoutes = require('./routes/analytics');
 const adminRoutes = require('./routes/admin');
 const cleanupRoutes = require('./routes/cleanup');
-// const upiMandateRoutes = require('./routes/upi-mandates'); // Legacy (disabled)
 const deviceVerificationRoutes = require('./routes/device-verification');
 const { router: trialManagementRoutes } = require('./routes/trial-management');
 const websiteRoutes = require('./routes/website');
@@ -114,14 +112,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Use raw body for Razorpay webhook to verify signature
-app.use('/api/subscriptions/webhook', bodyParser.raw({ type: '*/*' }));
-
-// JSON parser for all other routes
-app.use((req, res, next) => {
-    if (req.originalUrl === '/api/subscriptions/webhook') return next();
-    return express.json({ limit: '10mb' })(req, res, next);
-});
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Session configuration for web authentication
@@ -144,12 +135,11 @@ app.use('/api/auth', authRoutes);
 app.use('/api/auth', webAuthRoutes); // Web-based authentication
 app.use('/auth', webAuthRoutes); // Direct auth routes (for OAuth callback)
 app.use('/api/users', userRoutes);
-app.use('/api/payments', paymentRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/razorpay-subscriptions', razorpaySubscriptionRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/cleanup', cleanupRoutes);
-// app.use('/api/upi-mandates', upiMandateRoutes); // Legacy (disabled)
 app.use('/api/device', deviceVerificationRoutes);
 app.use('/api/trials', trialManagementRoutes);
 app.use('/api', websiteRoutes);
@@ -292,9 +282,8 @@ app.get('/api/status', (req, res) => {
             status: '/api/status',
             auth: '/api/auth',
             users: '/api/users',
-            payments: '/api/payments',
             subscriptions: '/api/subscriptions',
-            // upiMandates: '/api/upi-mandates',
+            razorpaySubscriptions: '/api/razorpay-subscriptions',
             analytics: '/api/analytics',
             admin: '/api/admin',
             cleanup: '/api/cleanup',
@@ -330,8 +319,7 @@ app.use('*', (req, res) => {
         message: 'Route not found',
         availableEndpoints: CONFIG.nodeEnv === 'development' ? [
             `${CONFIG.apiBaseUrl}/api/users`,
-            `${CONFIG.apiBaseUrl}/api/payments`,
-            `${CONFIG.apiBaseUrl}/api/upi-mandates`,
+            `${CONFIG.apiBaseUrl}/api/subscriptions`,
             `${CONFIG.apiBaseUrl}/api/admin`
         ] : undefined
     });
@@ -344,7 +332,23 @@ app.listen(CONFIG.port, CONFIG.host, () => {
     console.log(`🔗 UPI Mandate cron job scheduled for daily 2 AM IST`);
 });
 
-// Legacy UPI mandate cron job removed
+// Setup cron job for processing recurring charges (runs daily at 2 AM)
+cron.schedule('0 2 * * *', async () => {
+    console.log('Running daily UPI mandate charges...');
+    try {
+        const fetch = require('node-fetch');
+        const response = await fetch(`${CONFIG.apiBaseUrl}/api/upi-mandates/process-charges`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const result = await response.json();
+        console.log('Daily charge processing completed:', result);
+    } catch (error) {
+        console.error('Error in daily charge processing:', error);
+    }
+}, {
+    timezone: "Asia/Kolkata"
+});
 
 // Export CONFIG for use in other modules
 module.exports = { app, CONFIG };
