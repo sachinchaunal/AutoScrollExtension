@@ -12,6 +12,10 @@ class AutoScrollPopup {
         this.isAuthenticated = false;
         this.currentMandateId = null;
         this.mandateCheckInterval = null;
+        
+        // Universal API base URL that works across environments
+        this.API_BASE_URL = '${this.API_BASE_URL}';
+        
         this.init();
     }
 
@@ -358,17 +362,7 @@ class AutoScrollPopup {
                 subscriptionStatus.style.display = 'block';
                 const subscriptionText = document.getElementById('subscriptionText');
                 if (subscriptionText) {
-                    // Calculate days remaining for active subscription
-                    let daysText = 'Premium subscription active';
-                    if (this.subscriptionData.trialDaysRemaining && this.subscriptionData.trialDaysRemaining > 0) {
-                        daysText = `Premium active - ${this.subscriptionData.trialDaysRemaining} days remaining`;
-                    } else if (this.subscriptionData.subscriptionExpiry) {
-                        const now = new Date();
-                        const expiry = new Date(this.subscriptionData.subscriptionExpiry);
-                        const daysRemaining = Math.max(0, Math.ceil((expiry - now) / (1000 * 60 * 60 * 24)));
-                        daysText = `Premium active - ${daysRemaining} days remaining`;
-                    }
-                    subscriptionText.textContent = daysText;
+                    subscriptionText.textContent = 'Premium subscription active';
                 }
             }
             if (subscribeButton) {
@@ -634,8 +628,8 @@ class AutoScrollPopup {
             // Reset modal sections
             this.resetPaymentModalSections();
             
-            // Check for existing mandates when opening modal
-            await this.checkForExistingMandatesOnOpen();
+            // Check for existing autopay when opening modal
+            await this.checkForExistingAutopayOnOpen();
         }
     }
 
@@ -649,7 +643,7 @@ class AutoScrollPopup {
         if (statusSection) statusSection.style.display = 'none';
     }
 
-    async checkForExistingMandatesOnOpen() {
+    async checkForExistingAutopayOnOpen() {
         try {
             const userData = await chrome.storage.local.get(['backendUserId', 'authData']);
             
@@ -657,7 +651,7 @@ class AutoScrollPopup {
                 return; // User not authenticated
             }
 
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-autopay/status/${userData.backendUserId}`, {
+            const response = await fetch(`${this.API_BASE_URL}/upi-autopay/status/${userData.backendUserId}`, {
                 headers: {
                     'Authorization': `Bearer ${userData.authData.token}`
                 }
@@ -666,29 +660,29 @@ class AutoScrollPopup {
             const result = await response.json();
 
             if (result.success && result.data.hasMandate) {
-                // User has existing mandate, show it
+                // User has existing autopay, show it
                 this.currentMandateId = result.data.mandateId;
-                this.handleExistingMandateOnOpen(result.data);
+                this.handleExistingAutopayOnOpen(result.data);
             }
 
         } catch (error) {
-            console.log('AutoScroll Popup: Could not check existing mandates:', error.message);
+            console.log('AutoScroll Popup: Could not check existing autopay:', error.message);
             // Don't show error to user, just proceed with normal flow
         }
     }
 
-    handleExistingMandateOnOpen(mandateData) {
+    handleExistingAutopayOnOpen(autopayData) {
         const upiSection = document.getElementById('upiInputSection');
         const statusSection = document.getElementById('mandateStatus');
 
-        // Hide UPI input and show existing mandate
+        // Hide UPI input and show existing autopay
         if (upiSection) upiSection.style.display = 'none';
         if (statusSection) statusSection.style.display = 'block';
 
-        // Show existing mandate information
-        this.updateMandateStatus(mandateData);
+        // Show existing autopay information
+        this.updateMandateStatus(autopayData);
         
-        console.log('AutoScroll Popup: Found existing mandate:', mandateData.mandateId);
+        console.log('AutoScroll Popup: Found existing autopay:', autopayData.mandateId);
     }
 
     closePaymentModal() {
@@ -700,20 +694,12 @@ class AutoScrollPopup {
     }
 
     async createUpiMandate() {
-        const upiId = document.getElementById('userUpiId').value.trim();
-        
-        if (!upiId) {
-            this.showError('Please enter a valid UPI ID');
-            return;
-        }
-
-        if (!this.isValidUpiId(upiId)) {
-            this.showError('Please enter a valid UPI ID (e.g., yourname@paytm)');
-            return;
-        }
+        // Get customer information from current user
+        const customerName = this.currentUser?.name || 'AutoScroll User';
+        const customerEmail = this.currentUser?.email || 'user@autoscroll.com';
 
         try {
-            console.log('AutoScroll Popup: Creating UPI mandate for:', upiId);
+            console.log('AutoScroll Popup: Creating UPI AutoPay for user:', customerEmail);
 
             // Get user data with better validation
             const userData = await chrome.storage.local.get(['backendUserId', 'authData', 'userProfile']);
@@ -733,7 +719,7 @@ class AutoScrollPopup {
                 return;
             }
 
-            const response = await fetch('https://autoscrollextension.onrender.com/api/upi-autopay/create-mandate', {
+            const response = await fetch('${this.API_BASE_URL}/upi-autopay/create-autopay', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -741,8 +727,9 @@ class AutoScrollPopup {
                 },
                 body: JSON.stringify({
                     userId: userData.backendUserId,
-                    userUpiId: upiId,
-                    amount: 9 // Optional: specify amount, defaults to CONFIG.subscriptionPrice
+                    customerName: customerName,
+                    customerEmail: customerEmail,
+                    customerPhone: '+919999999999' // Optional: could be collected from user
                 })
             });
 
@@ -751,19 +738,22 @@ class AutoScrollPopup {
             if (result.success) {
                 this.currentMandateId = result.data.mandateId;
                 
-                // Handle Razorpay mandate response
-                if (result.data.qrCodeImage) {
-                    // Use the data URL QR code image
-                    this.showMandateQR(result.data.qrCodeImage);
-                    this.startMandateStatusCheck();
-                } else if (result.data.qrCodeData || result.data.paymentUrl) {
-                    // Use the payment URL as fallback
-                    this.showMandateQR(result.data.qrCodeData || result.data.paymentUrl);
+                // Handle AutoPay subscription URL
+                if (result.data.subscriptionUrl) {
+                    this.showAutopayLink(result.data.subscriptionUrl);
                     this.startMandateStatusCheck();
                 } else {
-                    // Test mode or simple mandate
-                    console.log('AutoScroll Popup: Test mandate created:', result.data);
-                    this.showNotification('Test Mode', 'Test mandate created successfully. In production, a QR code would be displayed.');
+                    // No subscription URL available yet
+                    console.log('AutoScroll Popup: AutoPay created but no URL yet:', result.data);
+                    this.showPendingSubscriptionMessage(result.data);
+                    
+                    // Start checking for URL availability
+                    this.startSubscriptionUrlCheck();
+                    
+                    // Also try to verify the subscription after a short delay
+                    setTimeout(() => {
+                        this.verifySubscriptionStatus(result.data.subscriptionId);
+                    }, 3000);
                 }
                 
                 // Show instructions if available
@@ -771,18 +761,18 @@ class AutoScrollPopup {
                     console.log('AutoScroll Popup: Instructions:', result.data.instructions);
                 }
             } else {
-                // Check if it's an existing mandate error
+                // Check if it's an existing autopay error
                 if (result.message && result.message.includes('already has an active mandate') && result.data) {
-                    // User has existing mandate, show management options
+                    // User has existing autopay, show management options
                     this.handleExistingMandate(result.data);
                 } else {
-                    throw new Error(result.message || 'Failed to create mandate');
+                    throw new Error(result.message || 'Failed to create autopay');
                 }
             }
 
         } catch (error) {
-            console.error('AutoScroll Popup: Mandate creation error:', error);
-            this.showError('Failed to create subscription: ' + error.message);
+            console.error('AutoScroll Popup: AutoPay creation error:', error);
+            this.showError('Failed to create AutoPay subscription: ' + error.message);
         }
     }
 
@@ -869,7 +859,7 @@ class AutoScrollPopup {
             // Get the existing mandate details to show QR/payment link again
             const userData = await chrome.storage.local.get(['backendUserId', 'authData']);
             
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-autopay/status/${userData.backendUserId}`, {
+            const response = await fetch(`${this.API_BASE_URL}/upi-autopay/status/${userData.backendUserId}`, {
                 headers: {
                     'Authorization': `Bearer ${userData.authData.token}`
                 }
@@ -878,14 +868,23 @@ class AutoScrollPopup {
             const result = await response.json();
 
             if (result.success && result.data.hasMandate) {
-                if (result.data.qrCodeImage || result.data.qrCodeData || result.data.paymentUrl) {
-                    // Show QR code or payment link if available
-                    const paymentData = result.data.qrCodeImage || result.data.qrCodeData || result.data.paymentUrl;
-                    this.showMandateQR(paymentData);
+                if (result.data.subscriptionUrl) {
+                    // Show the subscription URL for payment
+                    this.showAutopayLink(result.data.subscriptionUrl);
                     this.startMandateStatusCheck();
                     this.showNotification('Payment Required', 'Please complete the payment to activate your subscription.');
                 } else {
-                    this.showError('Payment completion option not available. The mandate may have expired. Please try creating a new subscription.');
+                    // No subscription URL available, try to create a new one
+                    console.log('No subscription URL available, attempting to recreate...');
+                    this.showError('Payment link expired. Creating a new subscription...');
+                    
+                    // Reset to create new mandate
+                    this.resetToCreateNewMandate();
+                    
+                    // Auto-create new mandate after a short delay
+                    setTimeout(() => {
+                        this.createUpiMandate();
+                    }, 2000);
                 }
             } else {
                 this.showError('Could not retrieve mandate details. Please try creating a new subscription.');
@@ -893,7 +892,492 @@ class AutoScrollPopup {
 
         } catch (error) {
             console.error('AutoScroll Popup: Pending payment completion error:', error);
-            this.showError('Failed to retrieve payment details: ' + error.message);
+            this.showError('Failed to retrieve payment details. Please try creating a new subscription.');
+        }
+    }
+
+    showPendingSubscriptionMessage(subscriptionData) {
+        const upiSection = document.getElementById('upiInputSection');
+        const qrSection = document.getElementById('mandateQrSection');
+        const qrCodeDiv = document.getElementById('mandateQrCode');
+
+        if (upiSection) upiSection.style.display = 'none';
+        if (qrSection) qrSection.style.display = 'block';
+        
+        if (qrCodeDiv) {
+            const pendingHTML = `
+                <div style="text-align: center;">
+                    <h3>⏳ Setting up your AutoPay</h3>
+                    <p style="margin-bottom: 15px;">Your subscription is being prepared...</p>
+                    <div style="margin: 20px 0;">
+                        <div class="loading-spinner" style="
+                            border: 4px solid #f3f3f3;
+                            border-top: 4px solid #3498db;
+                            border-radius: 50%;
+                            width: 40px;
+                            height: 40px;
+                            animation: spin 2s linear infinite;
+                            margin: 0 auto;
+                        "></div>
+                    </div>
+                    <p style="font-size: 14px; color: #666;">
+                        Please wait while we generate your payment link...
+                    </p>
+                    <div style="margin-top: 15px;">
+                        <button id="retrySubscriptionBtn" class="btn btn-secondary" style="margin-right: 10px;">
+                            🔄 Check Again
+                        </button>
+                        <button id="cancelPendingBtn" class="btn btn-danger">
+                            ❌ Cancel
+                        </button>
+                    </div>
+                </div>
+                <style>
+                @keyframes spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+                </style>
+            `;
+            
+            qrCodeDiv.innerHTML = pendingHTML;
+            
+            // Add event listeners
+            const retryBtn = document.getElementById('retrySubscriptionBtn');
+            const cancelBtn = document.getElementById('cancelPendingBtn');
+            
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => this.checkMandateStatus());
+            }
+            
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', () => this.resetToCreateNewMandate());
+            }
+        }
+    }
+
+    startSubscriptionUrlCheck() {
+        this.clearMandateCheckInterval();
+        
+        this.mandateCheckInterval = setInterval(async () => {
+            await this.checkForSubscriptionUrl();
+        }, 3000); // Check every 3 seconds
+
+        // Stop checking after 2 minutes
+        setTimeout(() => {
+            this.clearMandateCheckInterval();
+            this.showSubscriptionUrlTimeout();
+        }, 120000);
+    }
+
+    async checkForSubscriptionUrl() {
+        try {
+            const userData = await chrome.storage.local.get(['backendUserId', 'authData']);
+            
+            const response = await fetch(`${this.API_BASE_URL}/upi-autopay/status/${userData.backendUserId}`, {
+                headers: {
+                    'Authorization': `Bearer ${userData.authData.token}`
+                }
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data.hasMandate && result.data.subscriptionUrl) {
+                // URL is now available
+                this.clearMandateCheckInterval();
+                this.showAutopayLink(result.data.subscriptionUrl);
+                this.startMandateStatusCheck();
+                console.log('AutoScroll Popup: Subscription URL now available');
+            }
+
+        } catch (error) {
+            console.error('AutoScroll Popup: URL check error:', error);
+        }
+    }
+
+    showSubscriptionUrlTimeout() {
+        const qrCodeDiv = document.getElementById('mandateQrCode');
+        
+        if (qrCodeDiv) {
+            const timeoutHTML = `
+                <div style="text-align: center;">
+                    <h3>⚠️ Setup Taking Longer Than Expected</h3>
+                    <p style="margin-bottom: 15px;">The payment link generation is delayed.</p>
+                    <div style="margin-top: 20px;">
+                        <button id="retrySubscriptionSetup" class="btn btn-primary" style="margin-right: 10px;">
+                            🔄 Try Again
+                        </button>
+                        <button id="createNewSubscription" class="btn btn-secondary">
+                            ➕ Create New
+                        </button>
+                    </div>
+                    <p style="font-size: 12px; color: #666; margin-top: 15px;">
+                        If the issue persists, please contact support.
+                    </p>
+                </div>
+            `;
+            
+            qrCodeDiv.innerHTML = timeoutHTML;
+            
+            // Add event listeners
+            const retryBtn = document.getElementById('retrySubscriptionSetup');
+            const newBtn = document.getElementById('createNewSubscription');
+            
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => this.checkMandateStatus());
+            }
+            
+            if (newBtn) {
+                newBtn.addEventListener('click', () => this.resetToCreateNewMandate());
+            }
+        }
+    }
+
+    showAutopayLink(subscriptionUrl) {
+        const upiSection = document.getElementById('upiInputSection');
+        const qrSection = document.getElementById('mandateQrSection');
+        const qrCodeDiv = document.getElementById('mandateQrCode');
+
+        if (upiSection) upiSection.style.display = 'none';
+        if (qrSection) qrSection.style.display = 'block';
+        
+        if (qrCodeDiv && subscriptionUrl) {
+            const autopayHTML = `
+                <div style="text-align: center;">
+                    <h3>🔄 Setup UPI AutoPay</h3>
+                    <p style="margin-bottom: 15px;">Choose your preferred method to setup automatic monthly payments:</p>
+                    
+                    <div class="payment-methods" style="margin: 20px 0;">
+                        <div class="method-option" style="margin-bottom: 15px;">
+                            <button id="openInNewTab" class="btn btn-primary" style="
+                                width: 100%;
+                                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                                color: white;
+                                padding: 15px 30px;
+                                border: none;
+                                border-radius: 8px;
+                                font-weight: bold;
+                                font-size: 16px;
+                                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+                                cursor: pointer;
+                                transition: transform 0.2s;
+                            ">
+                                🚀 Open Payment Page in New Tab
+                            </button>
+                        </div>
+                        
+                        <div class="method-option" style="margin-bottom: 15px;">
+                            <button id="generateQrCode" class="btn btn-secondary" style="
+                                width: 100%;
+                                background: #28a745;
+                                color: white;
+                                padding: 12px 20px;
+                                border: none;
+                                border-radius: 6px;
+                                font-weight: bold;
+                                cursor: pointer;
+                            ">
+                                📱 Generate QR Code for UPI Apps
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="alternative-link" style="margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                        <p style="font-size: 12px; color: #666; margin: 5px 0;">Or copy this payment link:</p>
+                        <input type="text" value="${subscriptionUrl}" readonly class="copy-link-input" style="
+                            width: 100%;
+                            padding: 8px;
+                            border: 1px solid #ddd;
+                            border-radius: 4px;
+                            font-size: 12px;
+                            background: white;
+                            cursor: pointer;
+                        " />
+                        <p style="font-size: 11px; color: #888; margin: 5px 0;">Click to copy and paste in your browser</p>
+                    </div>
+                    
+                    <div id="qrCodeContainer" style="display: none; margin-top: 20px;">
+                        <div id="qrCodeDisplay" style="background: white; padding: 20px; border-radius: 8px; border: 2px solid #ddd;">
+                            <!-- QR code will be inserted here -->
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #007cba;">
+                        <h4 style="margin: 0 0 10px 0; color: #333;">What happens next?</h4>
+                        <ol style="text-align: left; margin: 0; padding-left: 20px;">
+                            <li>You'll be redirected to Razorpay's secure payment page</li>
+                            <li>Choose your UPI app (GPay, PhonePe, Paytm, etc.)</li>
+                            <li>Approve the AutoPay mandate for ₹9/month</li>
+                            <li>Your subscription will be automatically renewed monthly</li>
+                            <li>You can cancel anytime from this extension</li>
+                        </ol>
+                    </div>
+                    
+                    <p style="font-size: 12px; color: #666; margin-top: 15px;">
+                        Secure payment powered by Razorpay • Cancel anytime
+                    </p>
+                </div>
+            `;
+            
+            qrCodeDiv.innerHTML = autopayHTML;
+            
+            // Add event listeners for payment methods
+            this.setupPaymentMethodEventListeners(subscriptionUrl);
+        }
+    }
+
+    setupPaymentMethodEventListeners(subscriptionUrl) {
+        // Open in new tab button
+        const openTabBtn = document.getElementById('openInNewTab');
+        if (openTabBtn) {
+            openTabBtn.addEventListener('mouseenter', () => {
+                openTabBtn.style.transform = 'scale(1.02)';
+            });
+            
+            openTabBtn.addEventListener('mouseleave', () => {
+                openTabBtn.style.transform = 'scale(1)';
+            });
+            
+            openTabBtn.addEventListener('click', () => {
+                console.log('AutoScroll Popup: Opening payment page in new tab:', subscriptionUrl);
+                
+                // Universal solution that works in all browsers
+                try {
+                    // Try window.open first (works in all browsers)
+                    const newWindow = window.open(subscriptionUrl, '_blank', 'noopener,noreferrer');
+                    
+                    if (newWindow) {
+                        console.log('Successfully opened payment page in new tab using window.open');
+                        this.showNotification('Payment Page Opened', 'Complete the payment in the new tab to activate your subscription.');
+                    } else {
+                        // If popup was blocked, provide alternative methods
+                        throw new Error('Popup blocked');
+                    }
+                } catch (error) {
+                    console.log('window.open failed, providing alternative methods:', error.message);
+                    
+                    // Show alternative methods when popup is blocked
+                    this.showPopupBlockedAlternatives(subscriptionUrl);
+                }
+            });
+        }
+
+        // Generate QR code button
+        const qrBtn = document.getElementById('generateQrCode');
+        if (qrBtn) {
+            qrBtn.addEventListener('click', () => {
+                this.generateUpiQrCode(subscriptionUrl);
+            });
+        }
+
+        // Copy link functionality
+        const copyInput = document.querySelector('.copy-link-input');
+        if (copyInput) {
+            copyInput.addEventListener('click', function() {
+                this.select();
+                document.execCommand('copy');
+                this.style.background = '#e8f5e8';
+                setTimeout(() => {
+                    this.style.background = 'white';
+                }, 2000);
+            });
+        }
+    }
+
+    showPopupBlockedAlternatives(subscriptionUrl) {
+        const qrCodeDiv = document.getElementById('mandateQrCode');
+        
+        if (qrCodeDiv) {
+            const alternativesHTML = `
+                <div style="text-align: center;">
+                    <h3>🚫 Popup Blocked</h3>
+                    <p style="margin-bottom: 15px; color: #e74c3c;">Your browser blocked the popup. Please try one of these alternatives:</p>
+                    
+                    <div class="popup-alternatives" style="margin: 20px 0;">
+                        <div class="alternative-method" style="margin-bottom: 15px; padding: 15px; background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0; color: #856404;">🔗 Method 1: Copy Link</h4>
+                            <input type="text" value="${subscriptionUrl}" readonly id="manualCopyInput" style="
+                                width: 100%;
+                                padding: 10px;
+                                border: 1px solid #ddd;
+                                border-radius: 4px;
+                                font-size: 14px;
+                                background: white;
+                                cursor: pointer;
+                                margin-bottom: 10px;
+                            " />
+                            <button id="copyLinkBtn" class="btn btn-primary" style="width: 100%; padding: 10px;">
+                                📋 Copy Link and Open Manually
+                            </button>
+                            <p style="font-size: 12px; color: #856404; margin: 10px 0 0 0;">
+                                Click to copy, then paste in your browser's address bar
+                            </p>
+                        </div>
+                        
+                        <div class="alternative-method" style="margin-bottom: 15px; padding: 15px; background: #d1ecf1; border: 1px solid #bee5eb; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0; color: #0c5460;">📱 Method 2: QR Code</h4>
+                            <button id="showQrAlternative" class="btn btn-secondary" style="width: 100%; padding: 10px;">
+                                📱 Generate QR Code for Mobile Payment
+                            </button>
+                            <p style="font-size: 12px; color: #0c5460; margin: 10px 0 0 0;">
+                                Scan with your phone's camera or UPI app
+                            </p>
+                        </div>
+                        
+                        <div class="alternative-method" style="margin-bottom: 15px; padding: 15px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 8px;">
+                            <h4 style="margin: 0 0 10px 0; color: #721c24;">⚙️ Method 3: Allow Popups</h4>
+                            <p style="font-size: 14px; color: #721c24; margin: 0 0 10px 0;">
+                                1. Look for a popup blocker icon in your address bar<br>
+                                2. Click it and select "Always allow popups from this extension"<br>
+                                3. Refresh this extension and try again
+                            </p>
+                            <button id="retryAfterPopupAllow" class="btn btn-primary" style="width: 100%; padding: 10px;">
+                                🔄 Try Opening Payment Page Again
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <p style="font-size: 12px; color: #666; margin: 0;">
+                            <strong>Why does this happen?</strong><br>
+                            Browsers block popups by default for security. This is normal behavior.
+                            Any of the above methods will work to complete your payment.
+                        </p>
+                    </div>
+                </div>
+            `;
+            
+            qrCodeDiv.innerHTML = alternativesHTML;
+            
+            // Setup event listeners for alternatives
+            this.setupPopupAlternativeListeners(subscriptionUrl);
+        }
+    }
+
+    setupPopupAlternativeListeners(subscriptionUrl) {
+        // Copy link functionality
+        const copyInput = document.getElementById('manualCopyInput');
+        const copyBtn = document.getElementById('copyLinkBtn');
+        
+        if (copyInput && copyBtn) {
+            const copyFunction = () => {
+                copyInput.select();
+                copyInput.setSelectionRange(0, 99999); // For mobile devices
+                
+                try {
+                    document.execCommand('copy');
+                    copyBtn.textContent = '✅ Copied! Open in Browser';
+                    copyBtn.style.background = '#28a745';
+                    copyInput.style.background = '#e8f5e8';
+                    
+                    setTimeout(() => {
+                        copyBtn.textContent = '📋 Copy Link and Open Manually';
+                        copyBtn.style.background = '';
+                        copyInput.style.background = 'white';
+                    }, 3000);
+                    
+                    this.showNotification('Link Copied', 'Paste the link in your browser to complete payment.');
+                } catch (err) {
+                    console.error('Copy failed:', err);
+                    // Fallback: select the text for manual copy
+                    copyInput.focus();
+                    copyInput.select();
+                    this.showNotification('Please Copy Manually', 'Select all text and copy it manually.');
+                }
+            };
+            
+            copyInput.addEventListener('click', copyFunction);
+            copyBtn.addEventListener('click', copyFunction);
+        }
+
+        // QR code alternative
+        const qrBtn = document.getElementById('showQrAlternative');
+        if (qrBtn) {
+            qrBtn.addEventListener('click', () => {
+                this.generateUpiQrCode(subscriptionUrl);
+            });
+        }
+
+        // Retry popup
+        const retryBtn = document.getElementById('retryAfterPopupAllow');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', () => {
+                try {
+                    const newWindow = window.open(subscriptionUrl, '_blank', 'noopener,noreferrer');
+                    if (newWindow) {
+                        this.showNotification('Success!', 'Payment page opened successfully.');
+                    } else {
+                        this.showNotification('Still Blocked', 'Popups are still blocked. Please use the copy link method above.');
+                    }
+                } catch (error) {
+                    this.showNotification('Still Blocked', 'Please use the copy link method above.');
+                }
+            });
+        }
+    }
+
+    async generateUpiQrCode(subscriptionUrl) {
+        try {
+            const qrContainer = document.getElementById('qrCodeContainer');
+            const qrDisplay = document.getElementById('qrCodeDisplay');
+            
+            if (!qrContainer || !qrDisplay) return;
+            
+            // Show loading
+            qrDisplay.innerHTML = `
+                <div style="text-align: center; padding: 20px;">
+                    <div style="display: inline-block; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                    <p style="margin-top: 15px;">Generating QR Code...</p>
+                </div>
+                <style>
+                    @keyframes spin {
+                        0% { transform: rotate(0deg); }
+                        100% { transform: rotate(360deg); }
+                    }
+                </style>
+            `;
+            
+            qrContainer.style.display = 'block';
+            
+            // Generate QR code using a QR code service
+            const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(subscriptionUrl)}`;
+            
+            // Create QR code display
+            const qrHtml = `
+                <div style="text-align: center;">
+                    <h4 style="margin-bottom: 15px;">📱 Scan with any UPI app</h4>
+                    <img src="${qrCodeUrl}" alt="Payment QR Code" style="width: 200px; height: 200px; border: 1px solid #ddd;" />
+                    <p style="margin-top: 15px; font-size: 14px; color: #666;">
+                        Scan this QR code with GPay, PhonePe, Paytm, or any UPI app
+                    </p>
+                    <div style="margin-top: 15px;">
+                        <button id="hideQrCode" class="btn btn-secondary" style="padding: 8px 16px;">Hide QR Code</button>
+                    </div>
+                </div>
+            `;
+            
+            qrDisplay.innerHTML = qrHtml;
+            
+            // Add hide QR code functionality
+            const hideQrBtn = document.getElementById('hideQrCode');
+            if (hideQrBtn) {
+                hideQrBtn.addEventListener('click', () => {
+                    qrContainer.style.display = 'none';
+                });
+            }
+            
+            console.log('AutoScroll Popup: QR code generated for URL:', subscriptionUrl);
+            
+        } catch (error) {
+            console.error('AutoScroll Popup: Failed to generate QR code:', error);
+            const qrDisplay = document.getElementById('qrCodeDisplay');
+            if (qrDisplay) {
+                qrDisplay.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #e74c3c;">
+                        <p>Failed to generate QR code. Please use the payment link instead.</p>
+                    </div>
+                `;
+            }
         }
     }
 
@@ -970,7 +1454,7 @@ class AutoScrollPopup {
         try {
             const userData = await chrome.storage.local.get(['backendUserId', 'authData']);
             
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-autopay/status/${userData.backendUserId}`, {
+            const response = await fetch(`${this.API_BASE_URL}/upi-autopay/status/${userData.backendUserId}`, {
                 headers: {
                     'Authorization': `Bearer ${userData.authData.token}`
                 }
@@ -981,13 +1465,13 @@ class AutoScrollPopup {
             if (result.success) {
                 this.updateMandateStatus(result.data);
                 
-                if (result.data.status === 'active') {
-                    // Mandate is active, subscription successful
+                if (result.data.status === 'ACTIVE') {
+                    // AutoPay is active, subscription successful
                     this.clearMandateCheckInterval();
                     await this.loadSubscriptionData(); // Refresh subscription data
                     this.closePaymentModal();
                     this.updateSubscriptionInfo();
-                    this.showNotification('Success!', 'Your subscription is now active!');
+                    this.showNotification('Success!', 'Your AutoPay subscription is now active!');
                 }
             }
 
@@ -1003,7 +1487,7 @@ class AutoScrollPopup {
         const mandateDetails = document.getElementById('mandateDetails');
 
         if (statusSection) statusSection.style.display = 'block';
-        if (statusTitle) statusTitle.textContent = 'Subscription Status';
+        if (statusTitle) statusTitle.textContent = 'AutoPay Subscription Status';
         
         // Enhanced status text with icons
         const statusIcon = this.getStatusIcon(statusData.status);
@@ -1014,8 +1498,8 @@ class AutoScrollPopup {
             const nextPaymentInfo = this.getNextPaymentInfo(statusData);
             
             mandateDetails.innerHTML = `
-                <p><strong>Mandate ID:</strong></p>
-                <p class="mandate-id">${statusData.mandateId}</p>
+                <p><strong>Subscription ID:</strong></p>
+                <p class="mandate-id">${statusData.subscriptionId || statusData.mandateId}</p>
                 <p><strong>Amount:</strong> ₹${statusData.amount}/month</p>
                 <p><strong>Status:</strong> ${statusData.status.toUpperCase()}</p>
                 ${statusData.frequency ? `<p><strong>Billing Cycle:</strong> ${statusData.frequency}</p>` : ''}
@@ -1036,16 +1520,21 @@ class AutoScrollPopup {
     getStatusIcon(status) {
         const icons = {
             'active': '✅',
+            'ACTIVE': '✅',
             'pending': '⏳',
+            'PENDING': '⏳',
             'cancelled': '❌',
+            'CANCELLED': '❌',
             'paused': '⏸️',
-            'expired': '⏰'
+            'PAUSED': '⏸️',
+            'expired': '⏰',
+            'EXPIRED': '⏰'
         };
-        return icons[status.toLowerCase()] || '❓';
+        return icons[status] || '❓';
     }
 
     getNextPaymentInfo(statusData) {
-        if (statusData.status.toLowerCase() === 'active' && statusData.nextChargeDate) {
+        if ((statusData.status.toLowerCase() === 'active' || statusData.status === 'ACTIVE') && statusData.nextChargeDate) {
             const nextDate = new Date(statusData.nextChargeDate);
             const today = new Date();
             const diffTime = nextDate - today;
@@ -1067,23 +1556,23 @@ class AutoScrollPopup {
     getMandateActionButtons(status) {
         const statusLower = status.toLowerCase();
         
-        if (statusLower === 'active') {
+        if (statusLower === 'active' || status === 'ACTIVE') {
             return `
                 <button id="refreshMandateStatus" class="btn btn-secondary">🔄 Refresh Status</button>
                 <button id="cancelActiveMandateBtn" class="btn btn-danger">❌ Cancel Subscription</button>
             `;
-        } else if (statusLower === 'pending') {
+        } else if (statusLower === 'pending' || status === 'PENDING') {
             return `
                 <button id="completePendingMandateBtn" class="btn btn-primary">💳 Complete Payment</button>
                 <button id="refreshMandateStatus" class="btn btn-secondary">🔄 Check Status</button>
                 <button id="cancelPendingMandateBtn" class="btn btn-danger">❌ Cancel</button>
             `;
-        } else if (statusLower === 'cancelled') {
+        } else if (statusLower === 'cancelled' || status === 'CANCELLED') {
             return `
                 <button id="createNewMandateBtn" class="btn btn-primary">➕ Create New Subscription</button>
                 <button id="refreshMandateStatus" class="btn btn-secondary">🔄 Refresh Status</button>
             `;
-        } else if (statusLower === 'paused') {
+        } else if (statusLower === 'paused' || status === 'PAUSED') {
             return `
                 <button id="resumeMandateBtn" class="btn btn-primary">▶️ Resume Subscription</button>
                 <button id="refreshMandateStatus" class="btn btn-secondary">🔄 Refresh Status</button>
@@ -1160,9 +1649,13 @@ class AutoScrollPopup {
         if (!confirmResume) return;
 
         try {
-            this.showLoading('Resuming subscription...');
+            this.showLoading('Resume feature coming soon...');
 
-            const response = await fetch(`${this.API_BASE}/upi-autopay/resume-mandate`, {
+            // Note: Resume functionality not yet implemented in AutoPay system
+            // TODO: Implement resume functionality in upi-autopay routes
+            throw new Error('Resume functionality not yet available in the new AutoPay system. Please contact support.');
+
+            const response = await fetch(`${this.API_BASE}/upi-autopay/resume/${this.currentMandateId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1185,6 +1678,90 @@ class AutoScrollPopup {
             this.showError('Failed to resume subscription. Please try again.');
         } finally {
             this.hideLoading();
+        }
+    }
+
+    async verifySubscriptionStatus(subscriptionId) {
+        try {
+            console.log('AutoScroll Popup: Verifying subscription status:', subscriptionId);
+            
+            const response = await fetch(`${this.API_BASE_URL}/upi-autopay/verify-subscription/${subscriptionId}`);
+            const result = await response.json();
+
+            if (result.success) {
+                console.log('AutoScroll Popup: Subscription verification result:', result.data);
+                
+                if (result.data.shortUrl && !result.data.hasShortUrl) {
+                    // URL became available, update the UI
+                    this.showAutopayLink(result.data.shortUrl);
+                    this.startMandateStatusCheck();
+                } else if (!result.data.hasShortUrl) {
+                    console.warn('AutoScroll Popup: Subscription verification shows no URL available');
+                    this.showSubscriptionConfigError(result.data.debugInfo);
+                }
+            } else {
+                console.error('AutoScroll Popup: Subscription verification failed:', result);
+            }
+
+        } catch (error) {
+            console.error('AutoScroll Popup: Subscription verification error:', error);
+        }
+    }
+
+    showSubscriptionConfigError(debugInfo) {
+        const qrCodeDiv = document.getElementById('mandateQrCode');
+        
+        if (qrCodeDiv) {
+            const errorHTML = `
+                <div style="text-align: center;">
+                    <h3>⚠️ Subscription Configuration Issue</h3>
+                    <p style="margin-bottom: 15px;">There seems to be an issue with the payment link generation.</p>
+                    
+                    <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 8px; padding: 15px; margin: 15px 0; text-align: left;">
+                        <h4 style="margin: 0 0 10px 0; color: #856404;">Possible Causes:</h4>
+                        <ul style="margin: 0; padding-left: 20px; color: #856404; font-size: 14px;">
+                            <li>Payment system is temporarily unavailable</li>
+                            <li>Subscription plan configuration needs updating</li>
+                            <li>Network connectivity issues</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="margin-top: 20px;">
+                        <button id="retrySubscriptionCreation" class="btn btn-primary" style="margin-right: 10px;">
+                            🔄 Try Again
+                        </button>
+                        <button id="contactSupportBtn" class="btn btn-secondary">
+                            🆘 Contact Support
+                        </button>
+                    </div>
+                    
+                    <p style="font-size: 12px; color: #666; margin-top: 15px;">
+                        If the issue persists, please contact our support team.
+                    </p>
+                </div>
+            `;
+            
+            qrCodeDiv.innerHTML = errorHTML;
+            
+            // Add event listeners
+            const retryBtn = document.getElementById('retrySubscriptionCreation');
+            const supportBtn = document.getElementById('contactSupportBtn');
+            
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                    this.resetToCreateNewMandate();
+                    // Auto-retry after a short delay
+                    setTimeout(() => {
+                        this.createUpiMandate();
+                    }, 1000);
+                });
+            }
+            
+            if (supportBtn) {
+                supportBtn.addEventListener('click', () => {
+                    window.open('mailto:support@autoscrollextension.com?subject=Payment Link Issue&body=I am having trouble with the subscription payment link. Please help.', '_blank');
+                });
+            }
         }
     }
 
@@ -1218,23 +1795,19 @@ class AutoScrollPopup {
     async cancelMandate() {
         if (!this.currentMandateId) return;
 
-        if (!confirm('Are you sure you want to cancel your subscription?')) {
+        if (!confirm('Are you sure you want to cancel your AutoPay subscription?')) {
             return;
         }
 
         try {
             const userData = await chrome.storage.local.get(['backendUserId', 'authData']);
             
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-autopay/cancel-mandate`, {
+            const response = await fetch(`${this.API_BASE_URL}/upi-autopay/cancel/${userData.backendUserId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${userData.authData.token}`
-                },
-                body: JSON.stringify({
-                    userId: userData.backendUserId,
-                    mandateId: this.currentMandateId
-                })
+                }
             });
 
             const result = await response.json();
@@ -1243,7 +1816,7 @@ class AutoScrollPopup {
                 await this.loadSubscriptionData(); // Refresh subscription data
                 this.closePaymentModal();
                 this.updateSubscriptionInfo();
-                this.showNotification('Cancelled', 'Your subscription has been cancelled');
+                this.showNotification('Cancelled', 'Your AutoPay subscription has been cancelled');
             } else {
                 throw new Error(result.message || 'Failed to cancel subscription');
             }
@@ -1261,7 +1834,7 @@ class AutoScrollPopup {
             const settings = {};
             settings[key] = value;
 
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/auth/settings/${userData.backendUserId}`, {
+            const response = await fetch(`${this.API_BASE_URL}/auth/settings/${userData.backendUserId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

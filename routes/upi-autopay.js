@@ -199,6 +199,41 @@ router.post('/create-autopay', async (req, res) => {
             throw new Error(`Failed to create Razorpay subscription: ${subscriptionError.message}`);
         }
 
+        // For better UX, also create a payment link as alternative
+        let paymentLink = null;
+        try {
+            const paymentLinkOptions = {
+                amount: CONFIG.subscriptionPrice * 100, // Amount in paisa
+                currency: 'INR',
+                description: 'AutoScroll Extension - Monthly Subscription Setup',
+                customer: {
+                    name: customerName || 'AutoScroll User',
+                    email: customerEmail,
+                    contact: customerPhone || process.env.DEFAULT_CUSTOMER_PHONE || '+919999999999'
+                },
+                notify: {
+                    sms: false,
+                    email: true
+                },
+                callback_url: `${CONFIG.apiBaseUrl}/api/upi-autopay/payment-success`,
+                callback_method: 'get',
+                notes: {
+                    mandate_id: mandateId,
+                    user_id: userId,
+                    subscription_id: subscription.id,
+                    platform: 'autoscroll_extension',
+                    type: 'subscription_setup'
+                }
+            };
+
+            paymentLink = await razorpay.paymentLink.create(paymentLinkOptions);
+            console.log('Created payment link as alternative:', paymentLink.id);
+            console.log('Payment link URL:', paymentLink.short_url);
+        } catch (paymentLinkError) {
+            console.warn('Failed to create payment link alternative:', paymentLinkError.message);
+            // Don't throw error, subscription is more important
+        }
+
         // Step 3: Create mandate record in database
         const subscriptionStartDate = subscription.start_at ? 
             new Date(subscription.start_at * 1000) : 
@@ -234,6 +269,11 @@ router.post('/create-autopay', async (req, res) => {
         if (!subscription.short_url) {
             console.error('Warning: Razorpay subscription created but no short_url provided');
             console.log('Full subscription object:', JSON.stringify(subscription, null, 2));
+            
+            // For UPI AutoPay, we might need to generate a UPI URL instead
+            const upiUrl = `upi://mandate?pa=${process.env.MERCHANT_UPI_ID}&pn=${encodeURIComponent(process.env.MERCHANT_NAME || 'AutoScroll Extension')}&am=${CONFIG.subscriptionPrice}&cu=INR&tn=${encodeURIComponent('AutoScroll Monthly Subscription')}&mode=02&purpose=14&orgid=000000&sign=MEUCIQCKrA`;
+            
+            console.log('Generated UPI mandate URL as fallback:', upiUrl);
         }
 
         res.json({
@@ -249,6 +289,8 @@ router.post('/create-autopay', async (req, res) => {
                 endDate: mandate.endDate,
                 nextChargeDate: mandate.nextChargeDate,
                 status: 'PENDING',
+                // Add UPI deep link as fallback
+                upiUrl: `upi://mandate?pa=${process.env.MERCHANT_UPI_ID}&pn=${encodeURIComponent(process.env.MERCHANT_NAME || 'AutoScroll Extension')}&am=${CONFIG.subscriptionPrice}&cu=INR&tn=${encodeURIComponent('AutoScroll Monthly Subscription - ' + mandate.mandateId)}&mode=02&purpose=14`,
                 debug: {
                     hasShortUrl: !!subscription.short_url,
                     subscriptionStatus: subscription.status,
