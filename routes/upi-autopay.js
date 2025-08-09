@@ -93,6 +93,27 @@ router.post('/create-autopay', async (req, res) => {
             });
         }
 
+        // Verify the plan exists and is active
+        let planDetails;
+        try {
+            planDetails = await razorpay.plans.fetch(CONFIG.planId);
+            console.log('Plan verification successful:', planDetails.id, 'Status:', planDetails.item.active);
+            
+            if (!planDetails.item.active) {
+                return res.status(500).json({
+                    success: false,
+                    message: 'The subscription plan is not active. Please contact support.'
+                });
+            }
+        } catch (planError) {
+            console.error('Plan verification failed:', planError);
+            return res.status(500).json({
+                success: false,
+                message: 'Invalid subscription plan configuration. Please contact support.',
+                error: planError.message
+            });
+        }
+
         // Check if user already has an active mandate
         const existingMandate = await UpiMandate.findOne({
             userId,
@@ -171,8 +192,10 @@ router.post('/create-autopay', async (req, res) => {
             console.log('Created Razorpay subscription:', subscription.id);
             console.log('Subscription short_url:', subscription.short_url);
             console.log('Subscription status:', subscription.status);
+            console.log('Full subscription object:', JSON.stringify(subscription, null, 2));
         } catch (subscriptionError) {
             console.error('Subscription creation failed:', subscriptionError);
+            console.error('Subscription error details:', subscriptionError.error);
             throw new Error(`Failed to create Razorpay subscription: ${subscriptionError.message}`);
         }
 
@@ -264,8 +287,144 @@ router.post('/create-autopay', async (req, res) => {
 });
 
 /**
- * Get subscription status with payment link if pending
+ * Test Razorpay configuration and plan accessibility
  */
+router.get('/test-razorpay-config', async (req, res) => {
+    try {
+        const results = {
+            timestamp: new Date().toISOString(),
+            environment: process.env.NODE_ENV,
+            config: {
+                hasKeyId: !!process.env.RAZORPAY_KEY_ID,
+                hasKeySecret: !!process.env.RAZORPAY_KEY_SECRET,
+                hasPlanId: !!CONFIG.planId,
+                planId: CONFIG.planId,
+                subscriptionPrice: CONFIG.subscriptionPrice
+            },
+            tests: {}
+        };
+
+        // Test 1: Fetch plan details
+        try {
+            const plan = await razorpay.plans.fetch(CONFIG.planId);
+            results.tests.planFetch = {
+                success: true,
+                planId: plan.id,
+                amount: plan.item.amount,
+                currency: plan.item.currency,
+                active: plan.item.active,
+                interval: plan.interval,
+                period: plan.period
+            };
+        } catch (planError) {
+            results.tests.planFetch = {
+                success: false,
+                error: planError.message,
+                code: planError.error?.code
+            };
+        }
+
+        // Test 2: Check API connectivity
+        try {
+            const plans = await razorpay.plans.all({ count: 1 });
+            results.tests.apiConnectivity = {
+                success: true,
+                message: 'Razorpay API is accessible'
+            };
+        } catch (apiError) {
+            results.tests.apiConnectivity = {
+                success: false,
+                error: apiError.message,
+                code: apiError.error?.code
+            };
+        }
+
+        // Test 3: Create test customer (without saving to DB)
+        try {
+            const testCustomer = await razorpay.customers.create({
+                name: 'Test Customer',
+                email: `test_${Date.now()}@autoscroll.com`,
+                contact: '+919999999999'
+            });
+            
+            results.tests.customerCreation = {
+                success: true,
+                customerId: testCustomer.id
+            };
+            
+            // Cleanup: Since this is just a test, we could delete the customer
+            // but Razorpay doesn't allow customer deletion, so we'll leave it
+            
+        } catch (customerError) {
+            results.tests.customerCreation = {
+                success: false,
+                error: customerError.message,
+                code: customerError.error?.code
+            };
+        }
+
+        res.json({
+            success: true,
+            message: 'Razorpay configuration test completed',
+            data: results
+        });
+
+    } catch (error) {
+        console.error('Razorpay config test error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to test Razorpay configuration',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Verify subscription URL accessibility
+ * Helps debug hosted page issues
+ */
+router.get('/verify-subscription/:subscriptionId', async (req, res) => {
+    try {
+        const { subscriptionId } = req.params;
+        
+        // Fetch subscription details from Razorpay
+        const subscription = await razorpay.subscriptions.fetch(subscriptionId);
+        
+        res.json({
+            success: true,
+            data: {
+                subscriptionId: subscription.id,
+                status: subscription.status,
+                shortUrl: subscription.short_url,
+                hasShortUrl: !!subscription.short_url,
+                currentPeriodStart: subscription.current_start,
+                currentPeriodEnd: subscription.current_end,
+                planId: subscription.plan_id,
+                customerId: subscription.customer_id,
+                createdAt: subscription.created_at,
+                debugInfo: {
+                    urlActive: !!subscription.short_url,
+                    subscriptionActive: subscription.status === 'created' || subscription.status === 'active',
+                    troubleshooting: {
+                        checkPlan: 'Verify that the plan exists and is active',
+                        checkCustomer: 'Verify that the customer exists',
+                        checkUrl: 'Ensure the short_url is not null',
+                        razorpayStatus: 'Check Razorpay dashboard for any issues'
+                    }
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Subscription verification error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to verify subscription',
+            error: error.message,
+            code: error.error?.code || 'UNKNOWN_ERROR'
+        });
+    }
+});
 router.get('/status/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
@@ -511,84 +670,6 @@ router.post('/webhook', async (req, res) => {
         console.error('❌ Request headers:', JSON.stringify(req.headers, null, 2));
         res.status(500).json({ success: false, message: 'Webhook processing failed', error: error.message });
     }
-});
-
-/**
- * Test endpoint for webhook debugging
- * GET /api/upi-autopay/webhook-test
- */
-router.get('/webhook-test', async (req, res) => {
-    try {
-        console.log('🧪 Webhook test endpoint accessed');
-        
-        // Test webhook with simulated Razorpay event
-        const testEvent = {
-            entity: 'event',
-            account_id: 'acc_test123',
-            event: 'subscription.activated',
-            contains: ['subscription'],
-            payload: {
-                subscription: {
-                    entity: {
-                        id: 'sub_test_' + Date.now(),
-                        entity: 'subscription',
-                        plan_id: process.env.RAZORPAY_PLAN_ID,
-                        customer_id: 'cust_test123',
-                        status: 'active',
-                        current_start: Math.floor(Date.now() / 1000),
-                        current_end: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60),
-                        notes: {
-                            mandate_id: 'AUTOPAY_test_' + Date.now(),
-                            user_id: 'webhook_test_user',
-                            platform: 'autoscroll_extension'
-                        }
-                    }
-                }
-            }
-        };
-        
-        // Process the test event
-        console.log('🧪 Processing test webhook event:', testEvent.event);
-        
-        if (testEvent.payload && testEvent.payload.subscription && testEvent.payload.subscription.entity) {
-            await handleSubscriptionActivated(testEvent.payload.subscription.entity);
-            console.log('✅ Test webhook processed successfully');
-        }
-        
-        res.json({
-            success: true,
-            message: 'Webhook test completed',
-            testEvent: testEvent,
-            timestamp: new Date().toISOString()
-        });
-        
-    } catch (error) {
-        console.error('❌ Webhook test error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Webhook test failed',
-            error: error.message
-        });
-    }
-});
-
-/**
- * Webhook status and configuration endpoint
- * GET /api/upi-autopay/webhook-status
- */
-router.get('/webhook-status', (req, res) => {
-    const webhookConfig = {
-        endpoint: `${CONFIG.apiBaseUrl}/api/upi-autopay/webhook`,
-        secretConfigured: !!CONFIG.webhookSecret,
-        environmentMode: process.env.NODE_ENV || 'development',
-        signatureVerification: CONFIG.webhookSecret ? 'enabled' : 'disabled'
-    };
-    
-    res.json({
-        success: true,
-        data: webhookConfig,
-        message: 'Webhook configuration retrieved'
-    });
 });
 
 // Webhook handlers

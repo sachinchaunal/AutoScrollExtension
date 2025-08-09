@@ -62,19 +62,19 @@ validateConfig();
 // Connect to MongoDB
 connectDB();
 
-// Middleware - Configure Helmet with relaxed CSP for test dashboard
+// Middleware - Configure Helmet with relaxed CSP for test dashboard and payment integration
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for test dashboard
-            styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles
-            imgSrc: ["'self'", "data:", "blob:", "https:"], // Allow images from various sources
-            connectSrc: ["'self'", CONFIG.apiBaseUrl, "https://autoscrollextension.onrender.com"],
-            fontSrc: ["'self'", "https:", "data:"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://checkout.razorpay.com", "https://*.razorpay.com"], // Allow inline scripts and Razorpay
+            styleSrc: ["'self'", "'unsafe-inline'", "https://checkout.razorpay.com", "https://*.razorpay.com"], // Allow inline styles and Razorpay
+            imgSrc: ["'self'", "data:", "blob:", "https:", "https://checkout.razorpay.com", "https://*.razorpay.com"], // Allow images from various sources
+            connectSrc: ["'self'", CONFIG.apiBaseUrl, "https://autoscrollextension.onrender.com", "https://api.razorpay.com", "https://checkout.razorpay.com", "https://*.razorpay.com"],
+            fontSrc: ["'self'", "https:", "data:", "https://checkout.razorpay.com", "https://*.razorpay.com"],
+            frameSrc: ["'self'", "https://api.razorpay.com", "https://checkout.razorpay.com", "https://*.razorpay.com"], // Allow Razorpay frames
             objectSrc: ["'none'"],
             mediaSrc: ["'self'"],
-            frameSrc: ["'none'"],
         },
     },
 }));
