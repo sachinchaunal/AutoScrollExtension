@@ -657,7 +657,7 @@ class AutoScrollPopup {
                 return; // User not authenticated
             }
 
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-mandates/status/${userData.backendUserId}`, {
+            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-autopay/status/${userData.backendUserId}`, {
                 headers: {
                     'Authorization': `Bearer ${userData.authData.token}`
                 }
@@ -733,7 +733,7 @@ class AutoScrollPopup {
                 return;
             }
 
-            const response = await fetch('https://autoscrollextension.onrender.com/api/upi-mandates/create-mandate', {
+            const response = await fetch('https://autoscrollextension.onrender.com/api/upi-autopay/create-mandate', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -869,7 +869,7 @@ class AutoScrollPopup {
             // Get the existing mandate details to show QR/payment link again
             const userData = await chrome.storage.local.get(['backendUserId', 'authData']);
             
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-mandates/status/${userData.backendUserId}`, {
+            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-autopay/status/${userData.backendUserId}`, {
                 headers: {
                     'Authorization': `Bearer ${userData.authData.token}`
                 }
@@ -970,7 +970,7 @@ class AutoScrollPopup {
         try {
             const userData = await chrome.storage.local.get(['backendUserId', 'authData']);
             
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-mandates/status/${userData.backendUserId}`, {
+            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-autopay/status/${userData.backendUserId}`, {
                 headers: {
                     'Authorization': `Bearer ${userData.authData.token}`
                 }
@@ -1162,7 +1162,7 @@ class AutoScrollPopup {
         try {
             this.showLoading('Resuming subscription...');
 
-            const response = await fetch(`${this.API_BASE}/upi-mandates/resume-mandate`, {
+            const response = await fetch(`${this.API_BASE}/upi-autopay/resume-mandate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1225,7 +1225,7 @@ class AutoScrollPopup {
         try {
             const userData = await chrome.storage.local.get(['backendUserId', 'authData']);
             
-            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-mandates/cancel-mandate`, {
+            const response = await fetch(`https://autoscrollextension.onrender.com/api/upi-autopay/cancel-mandate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

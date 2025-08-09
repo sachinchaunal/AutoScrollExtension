@@ -17,7 +17,6 @@ const subscriptionRoutes = require('./routes/subscriptions');
 const analyticsRoutes = require('./routes/analytics');
 const adminRoutes = require('./routes/admin');
 const cleanupRoutes = require('./routes/cleanup');
-const upiMandateRoutes = require('./routes/upi-mandates');
 const upiAutopayRoutes = require('./routes/upi-autopay');
 const deviceVerificationRoutes = require('./routes/device-verification');
 const { router: trialManagementRoutes } = require('./routes/trial-management');
@@ -143,7 +142,6 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/cleanup', cleanupRoutes);
-app.use('/api/upi-mandates', upiMandateRoutes);
 app.use('/api/upi-autopay', upiAutopayRoutes);
 app.use('/api/device', deviceVerificationRoutes);
 app.use('/api/trials', trialManagementRoutes);
@@ -290,7 +288,6 @@ app.get('/api/status', (req, res) => {
             users: '/api/users',
             payments: '/api/payments',
             subscriptions: '/api/subscriptions',
-            upiMandates: '/api/upi-mandates',
             upiAutopay: '/api/upi-autopay',
             analytics: '/api/analytics',
             admin: '/api/admin',
@@ -328,7 +325,7 @@ app.use('*', (req, res) => {
         availableEndpoints: CONFIG.nodeEnv === 'development' ? [
             `${CONFIG.apiBaseUrl}/api/users`,
             `${CONFIG.apiBaseUrl}/api/payments`,
-            `${CONFIG.apiBaseUrl}/api/upi-mandates`,
+            `${CONFIG.apiBaseUrl}/api/upi-autopay`,
             `${CONFIG.apiBaseUrl}/api/admin`
         ] : undefined
     });
@@ -338,26 +335,12 @@ app.use('*', (req, res) => {
 app.listen(CONFIG.port, CONFIG.host, () => {
     console.log(`\n🚀 AutoScroll Backend Server running on ${CONFIG.apiBaseUrl}`);
     console.log(`📊 Environment: ${CONFIG.nodeEnv}`);
-    console.log(`🔗 UPI Mandate cron job scheduled for daily 2 AM IST`);
+    console.log(`🔗 UPI AutoPay system active with subscription management`);
 });
 
-// Setup cron job for processing recurring charges (runs daily at 2 AM)
-cron.schedule('0 2 * * *', async () => {
-    console.log('Running daily UPI mandate charges...');
-    try {
-        const fetch = require('node-fetch');
-        const response = await fetch(`${CONFIG.apiBaseUrl}/api/upi-mandates/process-charges`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' }
-        });
-        const result = await response.json();
-        console.log('Daily charge processing completed:', result);
-    } catch (error) {
-        console.error('Error in daily charge processing:', error);
-    }
-}, {
-    timezone: "Asia/Kolkata"
-});
+// Note: AutoPay subscriptions are handled automatically by Razorpay
+// No manual cron job needed for recurring charges
+console.log('AutoPay system initialized - recurring charges handled by Razorpay Subscriptions API');
 
 // Export CONFIG for use in other modules
 module.exports = { app, CONFIG };

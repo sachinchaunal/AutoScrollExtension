@@ -41,23 +41,17 @@ router.get('/deprecated-endpoints', (req, res) => {
             ],
             legacy: [
                 {
-                    endpoint: 'POST /api/upi-mandates/create-mandate',
-                    reason: 'Replaced by AutoPay system',
-                    alternative: 'POST /api/upi-autopay/create-autopay',
-                    status: 'deprecated-but-functional'
-                },
-                {
-                    endpoint: 'GET /api/upi-mandates/status/:userId',
-                    reason: 'Replaced by AutoPay system',
-                    alternative: 'GET /api/upi-autopay/status/:userId',
-                    status: 'deprecated-but-functional'
-                },
-                {
-                    endpoint: 'POST /api/upi-mandates/cancel-mandate',
-                    reason: 'Replaced by AutoPay system',
-                    alternative: 'POST /api/upi-autopay/cancel/:userId',
-                    status: 'deprecated-but-functional'
+                    note: 'All legacy UPI mandate endpoints have been completely removed',
+                    reason: 'Old payment link system replaced by proper Razorpay Subscriptions',
+                    migration: 'Use /api/upi-autopay/* endpoints for all subscription management',
+                    status: 'removed'
                 }
+            ],
+            removed: [
+                'POST /api/upi-mandates/create-mandate → POST /api/upi-autopay/create-autopay',
+                'GET /api/upi-mandates/status/:userId → GET /api/upi-autopay/status/:userId', 
+                'POST /api/upi-mandates/cancel-mandate → POST /api/upi-autopay/cancel/:userId',
+                'POST /api/upi-mandates/webhook → POST /api/upi-autopay/webhook'
             ]
         }
     });

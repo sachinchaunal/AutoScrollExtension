@@ -59,9 +59,9 @@ router.get('/test', (req, res) => {
 router.post('/create-order', async (req, res) => {
     res.status(410).json({
         success: false,
-        message: 'Payment orders deprecated. Use UPI mandates for autopay subscriptions.',
-        redirect: '/api/upi-mandates/create-mandate',
-        recommendation: 'This endpoint has been removed in favor of UPI autopay mandates which provide better user experience and automatic recurring payments.'
+        message: 'Payment orders deprecated. Use UPI AutoPay for subscription payments.',
+        redirect: '/api/upi-autopay/create-autopay',
+        recommendation: 'This endpoint has been removed in favor of UPI AutoPay subscriptions which provide better user experience and automatic recurring payments.'
     });
 });
 
