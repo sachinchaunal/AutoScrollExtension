@@ -133,9 +133,9 @@ router.get('/user/:userId', async (req, res) => {
 // Get subscription system status (general endpoint)
 router.get('/status', async (req, res) => {
     try {
-        // Get general subscription system status
-        const totalUsers = await User.countDocuments();
-        const activeSubscriptions = await User.countDocuments({ isSubscriptionActive: true });
+        // Get general subscription system status with simple queries
+        const totalUsers = await User.countDocuments({});
+        const activeSubscriptions = await User.countDocuments({ subscriptionStatus: 'active' });
         const trialUsers = await User.countDocuments({ subscriptionStatus: 'trial' });
         
         res.json({
