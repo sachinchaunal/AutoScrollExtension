@@ -75,6 +75,12 @@ router.post('/create-subscription', async (req, res) => {
             });
         }
 
+        console.log('Creating subscription for user:', {
+            userId: user._id,
+            email: user.email,
+            name: user.name
+        });
+
         // Check if user already has an active subscription
         if (user.subscriptionStatus === 'active' && user.hasAutoRenewal) {
             return res.status(400).json({
@@ -88,56 +94,91 @@ router.post('/create-subscription', async (req, res) => {
             });
         }
 
-        // Create subscription link
-        const subscriptionLinkOptions = {
+        // Create subscription using the older API approach
+        // First create a customer
+        const customer = await razorpay.customers.create({
+            name: user.name || 'AutoScroll User',
+            email: user.email || 'user@autoscroll.com',
+            contact: '+919999999999',
+            notes: {
+                user_id: userId,
+                source: 'extension'
+            }
+        });
+
+        // Then create subscription
+        const subscriptionOptions = {
             plan_id: CONFIG.planId,
-            customer_notify: 1,
+            customer_id: customer.id,
             quantity: 1,
             total_count: 60, // 5 years worth (60 months)
+            customer_notify: 1,
             notes: {
                 user_id: userId,
                 source: 'extension',
                 plan_type: 'monthly'
+            }
+        };
+
+        console.log('Creating Razorpay subscription with options:', subscriptionOptions);
+
+        const subscription = await razorpay.subscriptions.create(subscriptionOptions);
+        
+        // Create payment link for the first payment
+        const paymentLinkOptions = {
+            amount: CONFIG.subscriptionPrice * 100, // Convert to paise
+            currency: 'INR',
+            accept_partial: false,
+            description: 'AutoScroll Extension - First Payment & Setup AutoPay',
+            customer: {
+                name: user.name || 'AutoScroll User',
+                email: user.email,
+                contact: '+919999999999'
             },
-            // Notify options
             notify: {
-                email: true,
-                sms: false
+                sms: false,
+                email: true
             },
-            // Callback URLs
+            reminder_enable: false,
+            notes: {
+                subscription_id: subscription.id,
+                user_id: userId,
+                type: 'first_payment'
+            },
             callback_url: `${CONFIG.apiBaseUrl}/api/razorpay-subscriptions/callback`,
             callback_method: 'get'
         };
 
-        console.log('Creating Razorpay subscription link with options:', subscriptionLinkOptions);
+        const paymentLink = await razorpay.paymentLink.create(paymentLinkOptions);
 
-        const subscriptionLink = await razorpay.subscriptionLink.create(subscriptionLinkOptions);
-
-        console.log('Subscription link created:', {
-            id: subscriptionLink.id,
-            short_url: subscriptionLink.short_url,
-            status: subscriptionLink.status
+        console.log('Payment link created:', {
+            id: paymentLink.id,
+            short_url: paymentLink.short_url,
+            status: paymentLink.status
         });
 
-        // Store subscription link reference in user
-        user.razorpaySubscriptionLinkId = subscriptionLink.id;
+        // Store subscription and payment link reference in user
+        user.razorpaySubscriptionId = subscription.id;
+        user.razorpayCustomerId = customer.id;
+        user.razorpaySubscriptionLinkId = paymentLink.id;
         user.subscriptionLinkCreatedAt = new Date();
         await user.save();
 
         res.json({
             success: true,
-            message: 'Subscription link created successfully',
+            message: 'Subscription created successfully',
             data: {
-                subscriptionLinkId: subscriptionLink.id,
-                subscriptionUrl: subscriptionLink.short_url,
+                subscriptionId: subscription.id,
+                paymentLinkId: paymentLink.id,
+                subscriptionUrl: paymentLink.short_url,
                 amount: CONFIG.subscriptionPrice,
                 planType: 'Monthly',
                 instructions: [
-                    '1. Click the subscription link below',
+                    '1. Click the payment link below',
                     '2. Choose UPI as payment method',
-                    '3. Scan QR code with your UPI app',
-                    '4. Setup AutoPay for monthly renewals',
-                    '5. Complete the payment to activate subscription'
+                    '3. Complete the payment to activate subscription',
+                    '4. AutoPay will be set up automatically for future renewals',
+                    '5. You can cancel anytime from the extension settings'
                 ]
             }
         });
@@ -266,6 +307,14 @@ router.post('/webhook', async (req, res) => {
                 
             case 'payment.failed':
                 await handlePaymentFailed(event.payload.payment.entity);
+                break;
+                
+            case 'payment.captured':
+                await handlePaymentCaptured(event.payload.payment.entity);
+                break;
+                
+            case 'payment_link.paid':
+                await handlePaymentLinkPaid(event.payload);
                 break;
                 
             default:
@@ -452,19 +501,90 @@ async function handlePaymentFailed(payment) {
     }
 }
 
-// Callback handler for subscription link
+// Handle payment captured (for first payment)
+async function handlePaymentCaptured(payment) {
+    try {
+        console.log('Processing payment.captured:', payment.id);
+        
+        // Find user by payment notes
+        if (payment.notes && payment.notes.user_id) {
+            const user = await User.findById(payment.notes.user_id);
+            if (user && payment.notes.type === 'first_payment') {
+                // This is the first payment, activate the subscription
+                user.subscriptionStatus = 'active';
+                user.hasAutoRenewal = true;
+                user.lastPaymentDate = new Date();
+                
+                // Set subscription expiry to next billing cycle
+                const expiry = new Date();
+                expiry.setDate(expiry.getDate() + 30); // Monthly subscription
+                user.subscriptionExpiry = expiry;
+                
+                await user.save();
+                console.log(`First payment processed for user ${user._id}: ${payment.id}`);
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error handling payment capture:', error);
+    }
+}
+
+// Handle payment link paid event
+async function handlePaymentLinkPaid(payload) {
+    try {
+        const { payment_link, payment } = payload;
+        
+        console.log('Processing payment_link.paid event:', {
+            payment_link_id: payment_link.entity.id,
+            payment_id: payment.entity.id,
+            amount: payment.entity.amount
+        });
+        
+        // Find user by payment link ID
+        const user = await User.findOne({ 
+            razorpaySubscriptionLinkId: payment_link.entity.id 
+        });
+        
+        if (user) {
+            console.log('Found user for payment link:', user._id);
+            
+            // Activate subscription for this user
+            user.subscriptionStatus = 'active';
+            user.hasAutoRenewal = true;
+            user.lastPaymentDate = new Date();
+            
+            // Set initial subscription expiry (30 days from now)
+            const expiry = new Date();
+            expiry.setDate(expiry.getDate() + 30);
+            user.subscriptionExpiry = expiry;
+            
+            await user.save();
+            console.log('Payment link paid processed successfully for user:', user._id);
+        } else {
+            console.error('No user found for payment link:', payment_link.entity.id);
+        }
+    } catch (error) {
+        console.error('Error handling payment_link.paid:', error);
+    }
+}
+
+// Callback handler for payment link
 router.get('/callback', async (req, res) => {
     try {
-        const { subscription_id, subscription_link_id, status } = req.query;
+        const { razorpay_payment_id, razorpay_payment_link_id, razorpay_payment_link_status } = req.query;
         
-        console.log('Subscription callback received:', { subscription_id, subscription_link_id, status });
+        console.log('Payment callback received:', { 
+            payment_id: razorpay_payment_id, 
+            payment_link_id: razorpay_payment_link_id, 
+            status: razorpay_payment_link_status 
+        });
         
-        if (status === 'activated' && subscription_id) {
-            // Find user by subscription link ID
-            const user = await User.findOne({ razorpaySubscriptionLinkId: subscription_link_id });
+        if (razorpay_payment_link_status === 'paid' && razorpay_payment_link_id) {
+            // Find user by payment link ID
+            const user = await User.findOne({ razorpaySubscriptionLinkId: razorpay_payment_link_id });
             
             if (user) {
-                user.razorpaySubscriptionId = subscription_id;
                 user.subscriptionStatus = 'active';
                 user.hasAutoRenewal = true;
                 user.lastPaymentDate = new Date();
@@ -476,18 +596,21 @@ router.get('/callback', async (req, res) => {
                 
                 await user.save();
                 
-                console.log(`Subscription callback processed for user ${user._id}`);
+                console.log(`Payment callback processed for user ${user._id}`);
+                
+                // Redirect to extension with success status
+                res.redirect(`${CONFIG.frontendUrl}/popup.html?subscription=success`);
+            } else {
+                console.error('User not found for payment link:', razorpay_payment_link_id);
+                res.redirect(`${CONFIG.frontendUrl}/popup.html?subscription=error`);
             }
+        } else {
+            res.redirect(`${CONFIG.frontendUrl}/popup.html?subscription=failed`);
         }
-        
-        // Redirect to extension with status
-        const redirectUrl = `${CONFIG.frontendUrl}/popup.html?subscription=${status || 'success'}`;
-        res.redirect(redirectUrl);
         
     } catch (error) {
         console.error('Callback error:', error);
-        const redirectUrl = `${CONFIG.frontendUrl}/popup.html?subscription=error`;
-        res.redirect(redirectUrl);
+        res.redirect(`${CONFIG.frontendUrl}/popup.html?subscription=error`);
     }
 });
 
