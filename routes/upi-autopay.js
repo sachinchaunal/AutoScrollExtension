@@ -13,13 +13,42 @@ const razorpay = new Razorpay({
 // Configuration
 const CONFIG = {
     planId: process.env.RAZORPAY_PLAN_ID,
-    subscriptionPrice: parseInt(process.env.SUBSCRIPTION_PRICE) || 9,
     webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
-    apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000'
+    subscriptionPrice: parseInt(process.env.SUBSCRIPTION_PRICE) || 9,
+    webhookUrl: process.env.NODE_ENV === 'production' 
+        ? 'https://autoscrollextension.onrender.com/api/upi-autopay/webhook'
+        : 'http://localhost:3000/api/upi-autopay/webhook'
 };
 
 /**
- * 🚀 NEW SIMPLE SUBSCRIPTION SYSTEM
+ * � Debug plan endpoint
+ */
+router.get('/debug-plan', async (req, res) => {
+    try {
+        console.log('Fetching plan for debugging...');
+        const plan = await razorpay.plans.fetch(CONFIG.planId);
+        
+        res.json({
+            success: true,
+            message: 'Plan debug successful',
+            data: {
+                planId: CONFIG.planId,
+                planStatus: plan.status,
+                planDetails: plan
+            }
+        });
+    } catch (error) {
+        console.error('Debug plan error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Debug plan failed',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * �🚀 NEW SIMPLE SUBSCRIPTION SYSTEM
  * Creates a Razorpay subscription link for UPI AutoPay
  */
 router.post('/create-subscription', async (req, res) => {
@@ -50,22 +79,79 @@ router.post('/create-subscription', async (req, res) => {
             });
         }
 
+        // For testing: Allow trial users to create subscriptions
+        console.log(`User subscription status: ${user.subscriptionStatus}`);
+
+        // Verify plan exists and is active
+        console.log('Checking Razorpay plan...');
+        try {
+            const plan = await razorpay.plans.fetch(CONFIG.planId);
+            console.log('Plan status:', plan.status);
+            console.log('Plan details:', JSON.stringify(plan, null, 2));
+        } catch (planError) {
+            console.error('Plan fetch error:', planError);
+            throw new Error(`Plan verification failed: ${planError.message}`);
+        }
+
         console.log(`Creating subscription for user: ${user.email}`);
 
-        // Step 1: Create Razorpay Customer
-        const customer = await razorpay.customers.create({
-            name: user.name || 'AutoScroll User',
-            email: user.email,
-            contact: user.phone || '+919999999999',
-            notes: {
-                user_id: userId,
-                platform: 'autoscroll_extension'
+        // Step 1: Create or Find Razorpay Customer
+        console.log('Step 1: Creating or finding Razorpay customer...');
+        let customer;
+        try {
+            // First try to create a new customer
+            customer = await razorpay.customers.create({
+                name: user.name || 'AutoScroll User',
+                email: user.email,
+                contact: user.phone || '+919999999999',
+                notes: {
+                    user_id: userId,
+                    platform: 'autoscroll_extension'
+                }
+            });
+            console.log(`✅ Created new Razorpay customer: ${customer.id}`);
+        } catch (customerError) {
+            console.log('❌ Customer creation failed, checking if customer already exists...');
+            console.log('Customer error:', customerError.message);
+            
+            // If customer already exists, try to find them
+            if (customerError.message && customerError.message.includes('Customer already exists')) {
+                try {
+                    console.log('🔍 Searching for existing customer...');
+                    // Search for existing customer by email
+                    const customers = await razorpay.customers.all({
+                        count: 10,
+                        skip: 0
+                    });
+                    
+                    const existingCustomer = customers.items.find(c => c.email === user.email);
+                    
+                    if (existingCustomer) {
+                        customer = existingCustomer;
+                        console.log(`✅ Found existing Razorpay customer: ${customer.id}`);
+                    } else {
+                        throw new Error('Customer exists but could not be found in search');
+                    }
+                } catch (searchError) {
+                    console.error('❌ Failed to find existing customer:', searchError);
+                    throw new Error(`Customer lookup failed: ${searchError.message}`);
+                }
+            } else {
+                // Some other error occurred
+                console.error('❌ Customer creation failed with unexpected error:', customerError);
+                console.error('❌ Customer error full details:', JSON.stringify(customerError, null, 2));
+                
+                const errorMessage = customerError.message || 
+                                    customerError.description || 
+                                    customerError.error?.description || 
+                                    `Razorpay API Error (${customerError.statusCode})`;
+                
+                throw new Error(`Customer creation failed: ${errorMessage}`);
             }
-        });
-
-        console.log(`Created Razorpay customer: ${customer.id}`);
+        }
 
         // Step 2: Create Subscription
+        console.log('Step 2: Creating subscription...');
         const subscription = await razorpay.subscriptions.create({
             plan_id: CONFIG.planId,
             customer_id: customer.id,
@@ -84,7 +170,9 @@ router.post('/create-subscription', async (req, res) => {
         // Step 3: Update user with subscription details
         user.razorpayCustomerId = customer.id;
         user.razorpaySubscriptionId = subscription.id;
-        user.subscriptionStatus = 'pending'; // Will be updated via webhook
+        // For local testing, set to trial since webhooks won't work
+        // In production, webhooks will update this to 'active' after payment
+        user.subscriptionStatus = 'trial'; // Will be updated via webhook in production
         await user.save();
 
         res.json({
@@ -102,10 +190,13 @@ router.post('/create-subscription', async (req, res) => {
 
     } catch (error) {
         console.error('Create subscription error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         res.status(500).json({
             success: false,
             message: 'Failed to create subscription',
-            error: error.message
+            error: error.message,
+            details: error.description || 'No additional details',
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     }
 });
@@ -125,32 +216,19 @@ router.get('/status/:userId', async (req, res) => {
             });
         }
 
-        let subscriptionDetails = null;
-        if (user.razorpaySubscriptionId) {
-            try {
-                subscriptionDetails = await razorpay.subscriptions.fetch(user.razorpaySubscriptionId);
-            } catch (error) {
-                console.error('Error fetching subscription details:', error);
-            }
-        }
-
         res.json({
             success: true,
             data: {
-                userId,
-                subscriptionStatus: user.subscriptionStatus,
-                isSubscriptionActive: user.isSubscriptionActive,
-                subscriptionExpiry: user.subscriptionExpiry,
-                hasAutoRenewal: user.hasAutoRenewal,
+                subscriptionStatus: user.subscriptionStatus || 'inactive',
+                hasActiveSubscription: user.isSubscriptionActive || false,
                 subscriptionId: user.razorpaySubscriptionId,
                 customerId: user.razorpayCustomerId,
-                razorpayStatus: subscriptionDetails?.status || null,
-                nextChargeDate: subscriptionDetails?.current_end ? new Date(subscriptionDetails.current_end * 1000) : null
+                nextBillingDate: user.subscriptionExpiry
             }
         });
 
     } catch (error) {
-        console.error('Status check error:', error);
+        console.error('Get subscription status error:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to get subscription status',
@@ -174,17 +252,22 @@ router.post('/cancel/:userId', async (req, res) => {
             });
         }
 
-        if (user.razorpaySubscriptionId) {
-            // Cancel the subscription in Razorpay
-            await razorpay.subscriptions.cancel(user.razorpaySubscriptionId, {
-                cancel_at_cycle_end: 0 // Cancel immediately
+        if (!user.razorpaySubscriptionId) {
+            return res.status(400).json({
+                success: false,
+                message: 'No active subscription found'
             });
         }
 
+        // Cancel subscription on Razorpay
+        await razorpay.subscriptions.cancel(user.razorpaySubscriptionId, {
+            cancel_at_cycle_end: false
+        });
+
         // Update user status
         user.subscriptionStatus = 'cancelled';
+        user.isSubscriptionActive = false;
         user.hasAutoRenewal = false;
-        user.cancelledAt = new Date();
         await user.save();
 
         res.json({
@@ -282,15 +365,13 @@ async function handleSubscriptionCharged(payment, subscription) {
         const user = await User.findById(userId);
         if (!user) return;
 
-        // Extend subscription by 30 days
-        const currentExpiry = new Date(user.subscriptionExpiry || new Date());
-        user.subscriptionExpiry = new Date(currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000);
-        user.lastPaymentDate = new Date();
+        // Extend subscription expiry
+        user.subscriptionExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days from now
         user.subscriptionStatus = 'active';
         user.isSubscriptionActive = true;
         await user.save();
 
-        console.log(`💰 Payment received for user: ${user.email}, Amount: ₹${payment.amount / 100}`);
+        console.log(`💰 Payment successful for user: ${user.email}, Amount: ${payment.amount/100}`);
     } catch (error) {
         console.error('Error handling subscription charge:', error);
     }
@@ -305,8 +386,8 @@ async function handleSubscriptionCancelled(subscription) {
         if (!user) return;
 
         user.subscriptionStatus = 'cancelled';
+        user.isSubscriptionActive = false;
         user.hasAutoRenewal = false;
-        user.cancelledAt = new Date();
         await user.save();
 
         console.log(`❌ Subscription cancelled for user: ${user.email}`);
@@ -334,21 +415,23 @@ async function handleSubscriptionHalted(subscription) {
 }
 
 /**
- * 🧪 Test endpoint for development
+ * 🧪 Test configuration endpoint
  */
 router.get('/test-config', async (req, res) => {
     try {
+        // Test plan fetch
         const plan = await razorpay.plans.fetch(CONFIG.planId);
         
         res.json({
             success: true,
             message: 'Configuration test passed',
             data: {
-                environment: process.env.NODE_ENV,
+                environment: process.env.NODE_ENV || 'development',
                 planId: CONFIG.planId,
-                planActive: plan.item.active,
+                planActive: plan.status === 'active',
                 planAmount: plan.item.amount / 100,
-                webhookUrl: `${CONFIG.apiBaseUrl}/api/upi-autopay/webhook`
+                webhookUrl: CONFIG.webhookUrl,
+                timestamp: new Date().toISOString()
             }
         });
     } catch (error) {
@@ -360,51 +443,143 @@ router.get('/test-config', async (req, res) => {
     }
 });
 
-module.exports = router;
-
 /**
- * Get AutoPay plan configuration
- * Returns plan details and pricing information
+ * 👤 Create test user
  */
-router.get('/plan-config', async (req, res) => {
+router.post('/create-test-user', async (req, res) => {
     try {
-        // Verify Razorpay configuration
-        if (!CONFIG.planId) {
-            return res.status(500).json({
-                success: false,
-                message: 'AutoPay plan not configured'
-            });
-        }
+        // Delete any existing test users first
+        await User.deleteMany({ email: { $regex: /test\..*@autoscroll\.test|sachinchaunal@gmail\.com/ } });
+        
+        // Create new test user with unique email to avoid Razorpay customer conflict
+        const testUser = new User({
+            googleId: 'test_google_id_' + Date.now(),
+            email: `test.${Date.now()}@autoscroll.test`,
+            name: 'Test User',
+            picture: 'https://lh3.googleusercontent.com/test',
+            verified_email: true,
+            subscriptionStatus: 'trial',
+            trialDaysRemaining: 10,
+            trialStartDate: new Date(),
+            trialEndDate: new Date(Date.now() + (10 * 24 * 60 * 60 * 1000)),
+            isTrialActive: true
+        });
 
-        // Get plan details from Razorpay
-        let planDetails = null;
-        try {
-            planDetails = await razorpay.plans.fetch(CONFIG.planId);
-        } catch (error) {
-            console.error('Error fetching plan from Razorpay:', error);
-        }
+        await testUser.save();
 
         res.json({
             success: true,
+            message: 'Test user created successfully',
             data: {
-                planId: CONFIG.planId,
-                amount: CONFIG.subscriptionPrice,
-                currency: 'INR',
-                interval: 'monthly',
-                description: 'AutoScroll Extension Premium Monthly Subscription',
-                planDetails: planDetails ? {
-                    id: planDetails.id,
-                    amount: planDetails.item.amount / 100, // Convert from paisa to rupees
-                    currency: planDetails.item.currency,
-                    interval: planDetails.period,
-                    intervalCount: planDetails.interval
-                } : null,
-                isConfigured: !!planDetails
+                userId: testUser._id,
+                email: testUser.email,
+                name: testUser.name,
+                subscriptionStatus: testUser.subscriptionStatus
             }
         });
 
     } catch (error) {
-        console.error('Error in plan config:', error);
+        console.error('Create test user error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create test user',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * 🧪 Simple test endpoint
+ */
+router.post('/test-simple', async (req, res) => {
+    try {
+        const { userId } = req.body;
+        console.log('Test endpoint called with userId:', userId);
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Test successful',
+            data: {
+                userId: user._id,
+                email: user.email,
+                config: CONFIG
+            }
+        });
+    } catch (error) {
+        console.error('Test endpoint error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Test failed',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * 🧪 Get test user for testing
+ */
+router.get('/test-user', async (req, res) => {
+    try {
+        const user = await User.findOne({ email: 'sachinchaunal@gmail.com' });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Test user not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: {
+                userId: user._id,
+                email: user.email,
+                name: user.name,
+                subscriptionStatus: user.subscriptionStatus
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get test user',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * 📋 Get plan configuration
+ */
+router.get('/plan-config', async (req, res) => {
+    try {
+        const plan = await razorpay.plans.fetch(CONFIG.planId);
+        
+        res.json({
+            success: true,
+            data: {
+                planId: CONFIG.planId,
+                amount: plan.item.amount / 100,
+                currency: plan.item.currency,
+                interval: plan.period,
+                description: plan.item.description,
+                planDetails: plan
+            }
+        });
+    } catch (error) {
         res.status(500).json({
             success: false,
             message: 'Failed to get plan configuration',
@@ -414,13 +589,13 @@ router.get('/plan-config', async (req, res) => {
 });
 
 /**
- * Create a proper UPI AutoPay mandate using Razorpay Subscriptions
- * This creates a true recurring payment setup, not just a payment link
+ * 🧪 Test webhook simulation (for local testing only)
+ * Since webhooks won't work locally, this endpoint simulates subscription activation
  */
-router.post('/create-autopay', async (req, res) => {
+router.post('/test-activate-subscription', async (req, res) => {
     try {
-        const { userId, customerName, customerEmail, customerPhone } = req.body;
-
+        const { userId } = req.body;
+        
         if (!userId) {
             return res.status(400).json({
                 success: false,
@@ -428,798 +603,52 @@ router.post('/create-autopay', async (req, res) => {
             });
         }
 
-        if (!CONFIG.planId) {
-            return res.status(500).json({
-                success: false,
-                message: 'Razorpay Plan ID not configured. Please set RAZORPAY_PLAN_ID environment variable.'
-            });
-        }
-
-        // Verify the plan exists and is active
-        let planDetails;
-        try {
-            planDetails = await razorpay.plans.fetch(CONFIG.planId);
-            console.log('Plan verification successful:', planDetails.id, 'Status:', planDetails.item.active);
-            
-            if (!planDetails.item.active) {
-                return res.status(500).json({
-                    success: false,
-                    message: 'The subscription plan is not active. Please contact support.'
-                });
-            }
-        } catch (planError) {
-            console.error('Plan verification failed:', planError);
-            return res.status(500).json({
-                success: false,
-                message: 'Invalid subscription plan configuration. Please contact support.',
-                error: planError.message
-            });
-        }
-
-        // Check if user already has an active mandate
-        const existingMandate = await UpiMandate.findOne({
-            userId,
-            status: { $in: ['PENDING', 'ACTIVE'] }
-        });
-
-        if (existingMandate) {
-            return res.status(400).json({
-                success: false,
-                message: 'User already has an active mandate',
-                data: {
-                    mandateId: existingMandate.mandateId,
-                    status: existingMandate.status,
-                    subscriptionId: existingMandate.razorpaySubscriptionId
-                }
-            });
-        }
-
-        // Generate local mandate ID
-        const mandateId = `AUTOPAY_${userId}_${Date.now()}`;
-
-        // Step 1: Create Razorpay Customer (or use existing)
-        let customer;
-        try {
-            customer = await razorpay.customers.create({
-                name: customerName || 'AutoScroll User',
-                email: customerEmail || `user_${userId}@autoscroll.com`,
-                contact: customerPhone || process.env.DEFAULT_CUSTOMER_PHONE || '+919999999999',
-                notes: {
-                    mandate_id: mandateId,
-                    user_id: userId,
-                    platform: 'autoscroll_extension'
-                }
-            });
-            console.log('Created new Razorpay customer:', customer.id);
-        } catch (customerError) {
-            // If customer with same email/phone exists, try with unique email
-            if (customerError.error && customerError.error.code === 'BAD_REQUEST_ERROR') {
-                const uniqueEmail = `user_${userId}_${Date.now()}@autoscroll.com`;
-                customer = await razorpay.customers.create({
-                    name: customerName || 'AutoScroll User',
-                    email: uniqueEmail,
-                    contact: customerPhone || process.env.DEFAULT_CUSTOMER_PHONE || '+919999999999',
-                    notes: {
-                        mandate_id: mandateId,
-                        user_id: userId,
-                        platform: 'autoscroll_extension'
-                    }
-                });
-                console.log('Created Razorpay customer with unique email:', customer.id);
-            } else {
-                throw customerError;
-            }
-        }
-
-        // Step 2: Create Subscription with UPI AutoPay
-        const subscriptionOptions = {
-            plan_id: CONFIG.planId,
-            customer_id: customer.id,
-            quantity: 1,
-            total_count: 60, // 5 years (60 months)
-            customer_notify: 1,
-            notes: {
-                mandate_id: mandateId,
-                user_id: userId,
-                platform: 'autoscroll_extension'
-            }
-        };
-
-        // Don't set start_at for immediate availability of payment URL
-        console.log('Creating Razorpay subscription with options:', JSON.stringify(subscriptionOptions, null, 2));
-        
-        let subscription;
-        try {
-            subscription = await razorpay.subscriptions.create(subscriptionOptions);
-            console.log('Created Razorpay subscription:', subscription.id);
-            console.log('Subscription short_url:', subscription.short_url);
-            console.log('Subscription status:', subscription.status);
-            console.log('Full subscription object:', JSON.stringify(subscription, null, 2));
-        } catch (subscriptionError) {
-            console.error('Subscription creation failed:', subscriptionError);
-            console.error('Subscription error details:', subscriptionError.error);
-            throw new Error(`Failed to create Razorpay subscription: ${subscriptionError.message}`);
-        }
-
-        // For better UX, also create a payment link as alternative
-        let paymentLink = null;
-        try {
-            const paymentLinkOptions = {
-                amount: CONFIG.subscriptionPrice * 100, // Amount in paisa
-                currency: 'INR',
-                description: 'AutoScroll Extension - Monthly Subscription Setup',
-                customer: {
-                    name: customerName || 'AutoScroll User',
-                    email: customerEmail,
-                    contact: customerPhone || process.env.DEFAULT_CUSTOMER_PHONE || '+919999999999'
-                },
-                notify: {
-                    sms: false,
-                    email: true
-                },
-                callback_url: `${CONFIG.apiBaseUrl}/api/upi-autopay/payment-success`,
-                callback_method: 'get',
-                notes: {
-                    mandate_id: mandateId,
-                    user_id: userId,
-                    subscription_id: subscription.id,
-                    platform: 'autoscroll_extension',
-                    type: 'subscription_setup'
-                }
-            };
-
-            paymentLink = await razorpay.paymentLink.create(paymentLinkOptions);
-            console.log('Created payment link as alternative:', paymentLink.id);
-            console.log('Payment link URL:', paymentLink.short_url);
-        } catch (paymentLinkError) {
-            console.warn('Failed to create payment link alternative:', paymentLinkError.message);
-            // Don't throw error, subscription is more important
-        }
-
-        // Step 3: Create mandate record in database
-        const subscriptionStartDate = subscription.start_at ? 
-            new Date(subscription.start_at * 1000) : 
-            new Date(); // Fallback to current time
-            
-        const subscriptionEndDate = subscription.end_at ? 
-            new Date(subscription.end_at * 1000) : 
-            new Date(Date.now() + (60 * 30 * 24 * 60 * 60 * 1000)); // 60 months from now
-            
-        const mandate = new UpiMandate({
-            userId,
-            mandateId,
-            upiId: null, // Will be set when user provides UPI ID during payment
-            merchantVpa: process.env.MERCHANT_UPI_ID,
-            amount: CONFIG.subscriptionPrice,
-            startDate: subscriptionStartDate,
-            endDate: subscriptionEndDate,
-            nextChargeDate: subscriptionStartDate,
-            status: 'PENDING',
-            razorpayCustomerId: customer.id,
-            razorpaySubscriptionId: subscription.id,
-            metadata: {
-                userAgent: req.headers['user-agent'],
-                ipAddress: req.ip,
-                platform: 'extension',
-                subscriptionType: 'upi_autopay'
-            }
-        });
-
-        await mandate.save();
-
-        // Validate subscription URL
-        if (!subscription.short_url) {
-            console.error('Warning: Razorpay subscription created but no short_url provided');
-            console.log('Full subscription object:', JSON.stringify(subscription, null, 2));
-            
-            // For UPI AutoPay, we might need to generate a UPI URL instead
-            const upiUrl = `upi://mandate?pa=${process.env.MERCHANT_UPI_ID}&pn=${encodeURIComponent(process.env.MERCHANT_NAME || 'AutoScroll Extension')}&am=${CONFIG.subscriptionPrice}&cu=INR&tn=${encodeURIComponent('AutoScroll Monthly Subscription')}&mode=02&purpose=14&orgid=000000&sign=MEUCIQCKrA`;
-            
-            console.log('Generated UPI mandate URL as fallback:', upiUrl);
-        }
-
-        res.json({
-            success: true,
-            message: 'UPI AutoPay mandate created successfully',
-            data: {
-                mandateId: mandate.mandateId,
-                subscriptionId: subscription.id,
-                customerId: customer.id,
-                subscriptionUrl: subscription.short_url || null,
-                amount: mandate.amount,
-                startDate: mandate.startDate,
-                endDate: mandate.endDate,
-                nextChargeDate: mandate.nextChargeDate,
-                status: 'PENDING',
-                // Add UPI deep link as fallback
-                upiUrl: `upi://mandate?pa=${process.env.MERCHANT_UPI_ID}&pn=${encodeURIComponent(process.env.MERCHANT_NAME || 'AutoScroll Extension')}&am=${CONFIG.subscriptionPrice}&cu=INR&tn=${encodeURIComponent('AutoScroll Monthly Subscription - ' + mandate.mandateId)}&mode=02&purpose=14`,
-                debug: {
-                    hasShortUrl: !!subscription.short_url,
-                    subscriptionStatus: subscription.status,
-                    subscriptionCreatedAt: subscription.created_at
-                },
-                instructions: subscription.short_url ? [
-                    '1. Click the subscription link to setup UPI AutoPay',
-                    '2. Select your UPI app and complete authentication',
-                    '3. Approve the recurring payment mandate',
-                    '4. Your subscription will be automatically charged monthly',
-                    '5. You can cancel anytime from the extension settings'
-                ] : [
-                    'Subscription created but payment link not immediately available.',
-                    'Please check status again in a few moments or contact support.'
-                ]
-            }
-        });
-
-    } catch (error) {
-        console.error('Create UPI autopay error:', error);
-        
-        if (error.error && error.error.code) {
-            return res.status(400).json({
-                success: false,
-                message: `Razorpay Error: ${error.error.description}`,
-                code: error.error.code
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Error creating UPI autopay mandate',
-            error: error.message
-        });
-    }
-});
-
-/**
- * Test Razorpay configuration and plan accessibility
- */
-router.get('/test-razorpay-config', async (req, res) => {
-    try {
-        const results = {
-            timestamp: new Date().toISOString(),
-            environment: process.env.NODE_ENV,
-            config: {
-                hasKeyId: !!process.env.RAZORPAY_KEY_ID,
-                hasKeySecret: !!process.env.RAZORPAY_KEY_SECRET,
-                hasPlanId: !!CONFIG.planId,
-                planId: CONFIG.planId,
-                subscriptionPrice: CONFIG.subscriptionPrice
-            },
-            tests: {}
-        };
-
-        // Test 1: Fetch plan details
-        try {
-            const plan = await razorpay.plans.fetch(CONFIG.planId);
-            results.tests.planFetch = {
-                success: true,
-                planId: plan.id,
-                amount: plan.item.amount,
-                currency: plan.item.currency,
-                active: plan.item.active,
-                interval: plan.interval,
-                period: plan.period
-            };
-        } catch (planError) {
-            results.tests.planFetch = {
-                success: false,
-                error: planError.message,
-                code: planError.error?.code
-            };
-        }
-
-        // Test 2: Check API connectivity
-        try {
-            const plans = await razorpay.plans.all({ count: 1 });
-            results.tests.apiConnectivity = {
-                success: true,
-                message: 'Razorpay API is accessible'
-            };
-        } catch (apiError) {
-            results.tests.apiConnectivity = {
-                success: false,
-                error: apiError.message,
-                code: apiError.error?.code
-            };
-        }
-
-        // Test 3: Create test customer (without saving to DB)
-        try {
-            const testCustomer = await razorpay.customers.create({
-                name: 'Test Customer',
-                email: `test_${Date.now()}@autoscroll.com`,
-                contact: '+919999999999'
-            });
-            
-            results.tests.customerCreation = {
-                success: true,
-                customerId: testCustomer.id
-            };
-            
-            // Cleanup: Since this is just a test, we could delete the customer
-            // but Razorpay doesn't allow customer deletion, so we'll leave it
-            
-        } catch (customerError) {
-            results.tests.customerCreation = {
-                success: false,
-                error: customerError.message,
-                code: customerError.error?.code
-            };
-        }
-
-        res.json({
-            success: true,
-            message: 'Razorpay configuration test completed',
-            data: results
-        });
-
-    } catch (error) {
-        console.error('Razorpay config test error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to test Razorpay configuration',
-            error: error.message
-        });
-    }
-});
-
-/**
- * Verify subscription URL accessibility
- * Helps debug hosted page issues
- */
-router.get('/verify-subscription/:subscriptionId', async (req, res) => {
-    try {
-        const { subscriptionId } = req.params;
-        
-        // Fetch subscription details from Razorpay
-        const subscription = await razorpay.subscriptions.fetch(subscriptionId);
-        
-        res.json({
-            success: true,
-            data: {
-                subscriptionId: subscription.id,
-                status: subscription.status,
-                shortUrl: subscription.short_url,
-                hasShortUrl: !!subscription.short_url,
-                currentPeriodStart: subscription.current_start,
-                currentPeriodEnd: subscription.current_end,
-                planId: subscription.plan_id,
-                customerId: subscription.customer_id,
-                createdAt: subscription.created_at,
-                debugInfo: {
-                    urlActive: !!subscription.short_url,
-                    subscriptionActive: subscription.status === 'created' || subscription.status === 'active',
-                    troubleshooting: {
-                        checkPlan: 'Verify that the plan exists and is active',
-                        checkCustomer: 'Verify that the customer exists',
-                        checkUrl: 'Ensure the short_url is not null',
-                        razorpayStatus: 'Check Razorpay dashboard for any issues'
-                    }
-                }
-            }
-        });
-        
-    } catch (error) {
-        console.error('Subscription verification error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to verify subscription',
-            error: error.message,
-            code: error.error?.code || 'UNKNOWN_ERROR'
-        });
-    }
-});
-router.get('/status/:userId', async (req, res) => {
-    try {
-        const { userId } = req.params;
-
-        const mandate = await UpiMandate.findOne({
-            userId,
-            status: { $in: ['PENDING', 'ACTIVE'] }
-        }).sort({ createdAt: -1 });
-
-        if (!mandate) {
-            return res.json({
-                success: true,
-                data: {
-                    hasMandate: false,
-                    message: 'No active autopay mandate found'
-                }
-            });
-        }
-
-        // If mandate is pending and has subscription ID, get payment URL
-        let subscriptionUrl = null;
-        if (mandate.status === 'PENDING' && mandate.razorpaySubscriptionId) {
-            try {
-                const subscription = await razorpay.subscriptions.fetch(mandate.razorpaySubscriptionId);
-                subscriptionUrl = subscription.short_url;
-            } catch (error) {
-                console.error('Error fetching subscription URL:', error);
-            }
-        }
-
-        res.json({
-            success: true,
-            data: {
-                hasMandate: true,
-                mandateId: mandate.mandateId,
-                status: mandate.status,
-                amount: mandate.amount,
-                frequency: 'Monthly',
-                nextChargeDate: mandate.nextChargeDate,
-                startDate: mandate.startDate,
-                endDate: mandate.endDate,
-                subscriptionId: mandate.razorpaySubscriptionId,
-                customerId: mandate.razorpayCustomerId,
-                subscriptionUrl: subscriptionUrl,
-                chargeAttempts: mandate.chargeAttempts ? mandate.chargeAttempts.length : 0,
-                lastFailedCharge: mandate.chargeAttempts ? 
-                    mandate.chargeAttempts.filter(attempt => attempt.status === 'FAILED').slice(-1)[0] : null
-            }
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Error fetching autopay status',
-            error: error.message
-        });
-    }
-});
-
-/**
- * Cancel UPI AutoPay mandate
- */
-router.post('/cancel/:userId', async (req, res) => {
-    try {
-        const { userId } = req.params;
-
-        // Find active mandate
-        const mandate = await UpiMandate.findOne({
-            userId,
-            status: { $in: ['PENDING', 'ACTIVE'] }
-        }).sort({ createdAt: -1 });
-
-        if (!mandate) {
+        const user = await User.findById(userId);
+        if (!user) {
             return res.status(404).json({
                 success: false,
-                message: 'No active autopay mandate found'
+                message: 'User not found'
             });
         }
 
-        // Cancel Razorpay subscription if exists
-        if (mandate.razorpaySubscriptionId) {
-            try {
-                await razorpay.subscriptions.cancel(mandate.razorpaySubscriptionId, {
-                    cancel_at_cycle_end: 0 // Cancel immediately
-                });
-                console.log(`Razorpay subscription cancelled: ${mandate.razorpaySubscriptionId}`);
-            } catch (razorpayError) {
-                console.error('Error cancelling Razorpay subscription:', razorpayError);
-                // Continue with local cancellation even if Razorpay fails
-            }
+        if (!user.razorpaySubscriptionId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User has no subscription to activate'
+            });
         }
 
-        // Update mandate status
-        mandate.status = 'CANCELLED';
-        mandate.cancelledAt = new Date();
-        await mandate.save();
+        // Simulate webhook - activate the subscription
+        user.subscriptionStatus = 'active';
+        user.subscriptionStartDate = new Date();
+        user.subscriptionExpiry = new Date(Date.now() + (30 * 24 * 60 * 60 * 1000)); // 30 days
+        user.lastPaymentDate = new Date();
+        user.autoPayEnabled = true;
+        user.isTrialActive = false;
+        
+        await user.save();
 
-        // Update user subscription (but preserve current access until expiry)
-        const user = await User.findOne({ userId: userId }); // Use findOne with userId field
-        if (user) {
-            user.hasAutoRenewal = false;
-            user.cancelledAt = new Date();
-            await user.save();
-        }
+        console.log(`✅ Simulated webhook activation for user ${user.email}`);
 
         res.json({
             success: true,
-            message: 'UPI AutoPay mandate cancelled successfully',
+            message: 'Subscription activated successfully (simulated webhook)',
             data: {
-                mandateId: mandate.mandateId,
-                cancelledAt: mandate.cancelledAt,
-                accessUntil: user ? user.subscriptionExpiry : null
+                userId: user._id,
+                subscriptionStatus: user.subscriptionStatus,
+                subscriptionExpiry: user.subscriptionExpiry,
+                autoPayEnabled: user.autoPayEnabled
             }
         });
 
     } catch (error) {
-        console.error('Cancel autopay error:', error);
+        console.error('Test webhook simulation error:', error);
         res.status(500).json({
             success: false,
-            message: 'Error cancelling autopay mandate',
+            message: 'Failed to simulate webhook',
             error: error.message
         });
     }
 });
-
-/**
- * Webhook handler for subscription events
- */
-router.post('/webhook', async (req, res) => {
-    try {
-        console.log('🔗 Webhook received - Headers:', {
-            signature: req.headers['x-razorpay-signature'] ? 'present' : 'missing',
-            contentType: req.headers['content-type'],
-            userAgent: req.headers['user-agent']
-        });
-        
-        console.log('🔗 Webhook received - Body type:', typeof req.body);
-        console.log('🔗 Webhook received - Body keys:', Object.keys(req.body || {}));
-        
-        const signature = req.headers['x-razorpay-signature'];
-        const body = JSON.stringify(req.body);
-        
-        // Enhanced signature verification with debugging
-        const crypto = require('crypto');
-        const expectedSignature = crypto
-            .createHmac('sha256', CONFIG.webhookSecret)
-            .update(body)
-            .digest('hex');
-        
-        // Skip signature verification in development or if no secret is configured
-        const skipSignatureVerification = !CONFIG.webhookSecret || CONFIG.webhookSecret === 'test' || process.env.NODE_ENV === 'development';
-        
-        if (signature && signature !== expectedSignature && !skipSignatureVerification) {
-            console.log('❌ Invalid webhook signature');
-            console.log('Expected:', expectedSignature);
-            console.log('Received:', signature);
-            return res.status(400).json({ success: false, message: 'Invalid signature' });
-        } else if (!signature && !skipSignatureVerification) {
-            console.log('⚠️ No signature provided, but signature verification is enabled');
-        } else if (skipSignatureVerification) {
-            console.log('⚠️ Signature verification skipped (development mode or no secret configured)');
-        }
-
-        const event = req.body;
-        
-        // Enhanced logging with fallback
-        if (event && event.event) {
-            console.log('✅ UPI AutoPay webhook received:', event.event);
-        } else {
-            console.log('⚠️ UPI AutoPay webhook received with undefined event');
-            console.log('📋 Full event object:', JSON.stringify(event, null, 2));
-            
-            // Try to handle malformed events
-            if (!event || typeof event !== 'object') {
-                console.log('❌ Invalid event object received');
-                return res.status(400).json({ success: false, message: 'Invalid event data' });
-            }
-        }
-
-        // Handle webhook events with safety checks
-        const eventType = event && event.event ? event.event : 'unknown';
-        
-        switch (eventType) {
-            case 'subscription.activated':
-                if (event.payload && event.payload.subscription && event.payload.subscription.entity) {
-                    await handleSubscriptionActivated(event.payload.subscription.entity);
-                } else {
-                    console.log('❌ Invalid subscription.activated payload structure');
-                }
-                break;
-                
-            case 'subscription.charged':
-                if (event.payload && event.payload.payment && event.payload.subscription) {
-                    await handleSubscriptionCharged(
-                        event.payload.payment.entity, 
-                        event.payload.subscription.entity
-                    );
-                } else {
-                    console.log('❌ Invalid subscription.charged payload structure');
-                }
-                break;
-                
-            case 'subscription.cancelled':
-                if (event.payload && event.payload.subscription && event.payload.subscription.entity) {
-                    await handleSubscriptionCancelled(event.payload.subscription.entity);
-                } else {
-                    console.log('❌ Invalid subscription.cancelled payload structure');
-                }
-                break;
-                
-            case 'subscription.halted':
-                if (event.payload && event.payload.subscription && event.payload.subscription.entity) {
-                    await handleSubscriptionHalted(event.payload.subscription.entity);
-                } else {
-                    console.log('❌ Invalid subscription.halted payload structure');
-                }
-                break;
-                
-            case 'payment.failed':
-                if (event.payload && event.payload.payment && event.payload.payment.entity) {
-                    await handlePaymentFailed(event.payload.payment.entity);
-                } else {
-                    console.log('❌ Invalid payment.failed payload structure');
-                }
-                break;
-                
-            case 'unknown':
-                console.log('❌ Unknown webhook event - event.event is undefined');
-                console.log('📋 Available event data:', Object.keys(event || {}));
-                break;
-                
-            default:
-                console.log('⚠️ Unhandled webhook event:', eventType);
-                console.log('📋 Full event data:', JSON.stringify(event, null, 2));
-        }
-
-        res.json({ success: true, message: 'Webhook processed successfully' });
-
-    } catch (error) {
-        console.error('❌ Webhook processing error:', error);
-        console.error('❌ Error stack:', error.stack);
-        console.error('❌ Request body:', JSON.stringify(req.body, null, 2));
-        console.error('❌ Request headers:', JSON.stringify(req.headers, null, 2));
-        res.status(500).json({ success: false, message: 'Webhook processing failed', error: error.message });
-    }
-});
-
-// Webhook handlers
-async function handleSubscriptionActivated(subscription) {
-    try {
-        const mandate = await UpiMandate.findOne({ 
-            razorpaySubscriptionId: subscription.id 
-        });
-        
-        if (mandate) {
-            mandate.status = 'ACTIVE';
-            mandate.activatedAt = new Date();
-            await mandate.save();
-
-            // Update user subscription
-            const user = await User.findOne({ userId: mandate.userId }); // Use findOne with userId field
-            if (user) {
-                user.subscriptionStatus = 'active';
-                user.hasAutoRenewal = true;
-                user.lastPaymentDate = new Date();
-                user.upiMandateId = mandate.mandateId;
-                
-                // Set subscription expiry to next billing cycle
-                const expiry = new Date();
-                expiry.setDate(expiry.getDate() + 30);
-                user.subscriptionExpiry = expiry;
-                
-                await user.save();
-            }
-
-            console.log(`UPI AutoPay activated: ${mandate.mandateId}`);
-        }
-    } catch (error) {
-        console.error('Error handling subscription activation:', error);
-    }
-}
-
-async function handleSubscriptionCharged(payment, subscription) {
-    try {
-        const mandate = await UpiMandate.findOne({ 
-            razorpaySubscriptionId: subscription.id 
-        });
-        
-        if (mandate) {
-            // Record successful charge
-            mandate.chargeAttempts.push({
-                date: new Date(),
-                amount: payment.amount / 100,
-                status: 'SUCCESS',
-                reference: payment.id,
-                razorpayPaymentId: payment.id
-            });
-
-            // Update next charge date
-            const nextDate = new Date();
-            nextDate.setDate(nextDate.getDate() + 30);
-            mandate.nextChargeDate = nextDate;
-            mandate.lastChargedDate = new Date();
-            
-            await mandate.save();
-
-            // Create payment record
-            const paymentRecord = new Payment({
-                userId: mandate.userId,
-                transactionId: payment.id,
-                razorpayPaymentId: payment.id,
-                amount: payment.amount / 100,
-                status: 'completed',
-                validatedAt: new Date(),
-                metadata: {
-                    mandateId: mandate.mandateId,
-                    subscriptionId: subscription.id,
-                    type: 'autopay_charge',
-                    platform: 'razorpay_autopay'
-                }
-            });
-            await paymentRecord.save();
-
-            // Extend user subscription
-            const user = await User.findOne({ userId: mandate.userId }); // Use findOne with userId field
-            if (user) {
-                const currentExpiry = new Date(user.subscriptionExpiry || new Date());
-                const newExpiry = new Date(currentExpiry);
-                newExpiry.setDate(newExpiry.getDate() + 30);
-                
-                user.subscriptionExpiry = newExpiry;
-                user.lastPaymentDate = new Date();
-                user.subscriptionStatus = 'active';
-                await user.save();
-            }
-
-            console.log(`UPI AutoPay charge successful: ${payment.id}`);
-        }
-    } catch (error) {
-        console.error('Error handling subscription charge:', error);
-    }
-}
-
-async function handleSubscriptionCancelled(subscription) {
-    try {
-        const mandate = await UpiMandate.findOne({ 
-            razorpaySubscriptionId: subscription.id 
-        });
-        
-        if (mandate) {
-            mandate.status = 'CANCELLED';
-            mandate.cancelledAt = new Date();
-            await mandate.save();
-
-            // Update user
-            const user = await User.findOne({ userId: mandate.userId }); // Use findOne with userId field
-            if (user) {
-                user.hasAutoRenewal = false;
-                user.cancelledAt = new Date();
-                await user.save();
-            }
-
-            console.log(`UPI AutoPay cancelled: ${mandate.mandateId}`);
-        }
-    } catch (error) {
-        console.error('Error handling subscription cancellation:', error);
-    }
-}
-
-async function handleSubscriptionHalted(subscription) {
-    try {
-        const mandate = await UpiMandate.findOne({ 
-            razorpaySubscriptionId: subscription.id 
-        });
-        
-        if (mandate) {
-            mandate.status = 'PAUSED';
-            await mandate.save();
-
-            console.log(`UPI AutoPay paused: ${mandate.mandateId}`);
-        }
-    } catch (error) {
-        console.error('Error handling subscription halt:', error);
-    }
-}
-
-async function handlePaymentFailed(payment) {
-    try {
-        // Find mandate by subscription ID (available in payment notes)
-        const mandate = await UpiMandate.findOne({ 
-            razorpaySubscriptionId: payment.subscription_id 
-        });
-        
-        if (mandate) {
-            // Record failed charge
-            mandate.chargeAttempts.push({
-                date: new Date(),
-                amount: payment.amount / 100,
-                status: 'FAILED',
-                reference: payment.id,
-                razorpayPaymentId: payment.id,
-                failureReason: payment.error_description || 'Payment failed'
-            });
-            
-            await mandate.save();
-
-            console.log(`UPI AutoPay payment failed: ${payment.id}`);
-        }
-    } catch (error) {
-        console.error('Error handling payment failure:', error);
-    }
-}
 
 module.exports = router;

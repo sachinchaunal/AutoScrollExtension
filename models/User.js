@@ -127,7 +127,7 @@ const userSchema = new mongoose.Schema({
     razorpayCustomerId: {
         type: String
     },
-    upiMandateId: {
+    razorpaySubscriptionId: {
         type: String
     },
     paymentHistory: [{
