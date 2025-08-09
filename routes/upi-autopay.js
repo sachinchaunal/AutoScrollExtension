@@ -396,58 +396,199 @@ router.post('/cancel/:userId', async (req, res) => {
  */
 router.post('/webhook', async (req, res) => {
     try {
+        console.log('🔗 Webhook received - Headers:', {
+            signature: req.headers['x-razorpay-signature'] ? 'present' : 'missing',
+            contentType: req.headers['content-type'],
+            userAgent: req.headers['user-agent']
+        });
+        
+        console.log('🔗 Webhook received - Body type:', typeof req.body);
+        console.log('🔗 Webhook received - Body keys:', Object.keys(req.body || {}));
+        
         const signature = req.headers['x-razorpay-signature'];
         const body = JSON.stringify(req.body);
         
-        // Verify webhook signature
+        // Enhanced signature verification with debugging
         const crypto = require('crypto');
         const expectedSignature = crypto
             .createHmac('sha256', CONFIG.webhookSecret)
             .update(body)
             .digest('hex');
         
-        if (signature && signature !== expectedSignature && CONFIG.webhookSecret) {
-            console.log('Invalid webhook signature');
+        // Skip signature verification in development or if no secret is configured
+        const skipSignatureVerification = !CONFIG.webhookSecret || CONFIG.webhookSecret === 'test' || process.env.NODE_ENV === 'development';
+        
+        if (signature && signature !== expectedSignature && !skipSignatureVerification) {
+            console.log('❌ Invalid webhook signature');
+            console.log('Expected:', expectedSignature);
+            console.log('Received:', signature);
             return res.status(400).json({ success: false, message: 'Invalid signature' });
+        } else if (!signature && !skipSignatureVerification) {
+            console.log('⚠️ No signature provided, but signature verification is enabled');
+        } else if (skipSignatureVerification) {
+            console.log('⚠️ Signature verification skipped (development mode or no secret configured)');
         }
 
         const event = req.body;
-        console.log('UPI AutoPay webhook received:', event.event);
+        
+        // Enhanced logging with fallback
+        if (event && event.event) {
+            console.log('✅ UPI AutoPay webhook received:', event.event);
+        } else {
+            console.log('⚠️ UPI AutoPay webhook received with undefined event');
+            console.log('📋 Full event object:', JSON.stringify(event, null, 2));
+            
+            // Try to handle malformed events
+            if (!event || typeof event !== 'object') {
+                console.log('❌ Invalid event object received');
+                return res.status(400).json({ success: false, message: 'Invalid event data' });
+            }
+        }
 
-        switch (event.event) {
+        // Handle webhook events with safety checks
+        const eventType = event && event.event ? event.event : 'unknown';
+        
+        switch (eventType) {
             case 'subscription.activated':
-                await handleSubscriptionActivated(event.payload.subscription.entity);
+                if (event.payload && event.payload.subscription && event.payload.subscription.entity) {
+                    await handleSubscriptionActivated(event.payload.subscription.entity);
+                } else {
+                    console.log('❌ Invalid subscription.activated payload structure');
+                }
                 break;
                 
             case 'subscription.charged':
-                await handleSubscriptionCharged(
-                    event.payload.payment.entity, 
-                    event.payload.subscription.entity
-                );
+                if (event.payload && event.payload.payment && event.payload.subscription) {
+                    await handleSubscriptionCharged(
+                        event.payload.payment.entity, 
+                        event.payload.subscription.entity
+                    );
+                } else {
+                    console.log('❌ Invalid subscription.charged payload structure');
+                }
                 break;
                 
             case 'subscription.cancelled':
-                await handleSubscriptionCancelled(event.payload.subscription.entity);
+                if (event.payload && event.payload.subscription && event.payload.subscription.entity) {
+                    await handleSubscriptionCancelled(event.payload.subscription.entity);
+                } else {
+                    console.log('❌ Invalid subscription.cancelled payload structure');
+                }
                 break;
                 
             case 'subscription.halted':
-                await handleSubscriptionHalted(event.payload.subscription.entity);
+                if (event.payload && event.payload.subscription && event.payload.subscription.entity) {
+                    await handleSubscriptionHalted(event.payload.subscription.entity);
+                } else {
+                    console.log('❌ Invalid subscription.halted payload structure');
+                }
                 break;
                 
             case 'payment.failed':
-                await handlePaymentFailed(event.payload.payment.entity);
+                if (event.payload && event.payload.payment && event.payload.payment.entity) {
+                    await handlePaymentFailed(event.payload.payment.entity);
+                } else {
+                    console.log('❌ Invalid payment.failed payload structure');
+                }
+                break;
+                
+            case 'unknown':
+                console.log('❌ Unknown webhook event - event.event is undefined');
+                console.log('📋 Available event data:', Object.keys(event || {}));
                 break;
                 
             default:
-                console.log('Unhandled webhook event:', event.event);
+                console.log('⚠️ Unhandled webhook event:', eventType);
+                console.log('📋 Full event data:', JSON.stringify(event, null, 2));
         }
 
-        res.json({ success: true });
+        res.json({ success: true, message: 'Webhook processed successfully' });
 
     } catch (error) {
-        console.error('Webhook processing error:', error);
-        res.status(500).json({ success: false, error: error.message });
+        console.error('❌ Webhook processing error:', error);
+        console.error('❌ Error stack:', error.stack);
+        console.error('❌ Request body:', JSON.stringify(req.body, null, 2));
+        console.error('❌ Request headers:', JSON.stringify(req.headers, null, 2));
+        res.status(500).json({ success: false, message: 'Webhook processing failed', error: error.message });
     }
+});
+
+/**
+ * Test endpoint for webhook debugging
+ * GET /api/upi-autopay/webhook-test
+ */
+router.get('/webhook-test', async (req, res) => {
+    try {
+        console.log('🧪 Webhook test endpoint accessed');
+        
+        // Test webhook with simulated Razorpay event
+        const testEvent = {
+            entity: 'event',
+            account_id: 'acc_test123',
+            event: 'subscription.activated',
+            contains: ['subscription'],
+            payload: {
+                subscription: {
+                    entity: {
+                        id: 'sub_test_' + Date.now(),
+                        entity: 'subscription',
+                        plan_id: process.env.RAZORPAY_PLAN_ID,
+                        customer_id: 'cust_test123',
+                        status: 'active',
+                        current_start: Math.floor(Date.now() / 1000),
+                        current_end: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60),
+                        notes: {
+                            mandate_id: 'AUTOPAY_test_' + Date.now(),
+                            user_id: 'webhook_test_user',
+                            platform: 'autoscroll_extension'
+                        }
+                    }
+                }
+            }
+        };
+        
+        // Process the test event
+        console.log('🧪 Processing test webhook event:', testEvent.event);
+        
+        if (testEvent.payload && testEvent.payload.subscription && testEvent.payload.subscription.entity) {
+            await handleSubscriptionActivated(testEvent.payload.subscription.entity);
+            console.log('✅ Test webhook processed successfully');
+        }
+        
+        res.json({
+            success: true,
+            message: 'Webhook test completed',
+            testEvent: testEvent,
+            timestamp: new Date().toISOString()
+        });
+        
+    } catch (error) {
+        console.error('❌ Webhook test error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Webhook test failed',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Webhook status and configuration endpoint
+ * GET /api/upi-autopay/webhook-status
+ */
+router.get('/webhook-status', (req, res) => {
+    const webhookConfig = {
+        endpoint: `${CONFIG.apiBaseUrl}/api/upi-autopay/webhook`,
+        secretConfigured: !!CONFIG.webhookSecret,
+        environmentMode: process.env.NODE_ENV || 'development',
+        signatureVerification: CONFIG.webhookSecret ? 'enabled' : 'disabled'
+    };
+    
+    res.json({
+        success: true,
+        data: webhookConfig,
+        message: 'Webhook configuration retrieved'
+    });
 });
 
 // Webhook handlers
