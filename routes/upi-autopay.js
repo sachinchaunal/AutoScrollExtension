@@ -1,9 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Razorpay = require('razorpay');
-const UpiMandate = require('../models/UpiMandate');
+const crypto = require('crypto');
 const User = require('../models/User');
-const Payment = require('../models/Payment');
 
 // Initialize Razorpay
 const razorpay = new Razorpay({
@@ -15,10 +14,353 @@ const razorpay = new Razorpay({
 const CONFIG = {
     planId: process.env.RAZORPAY_PLAN_ID,
     subscriptionPrice: parseInt(process.env.SUBSCRIPTION_PRICE) || 9,
-    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET,
-    apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000',
-    frontendUrl: process.env.FRONTEND_URL || 'chrome-extension://your-extension-id'
+    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+    apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:3000'
 };
+
+/**
+ * 🚀 NEW SIMPLE SUBSCRIPTION SYSTEM
+ * Creates a Razorpay subscription link for UPI AutoPay
+ */
+router.post('/create-subscription', async (req, res) => {
+    try {
+        const { userId } = req.body;
+
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+
+        // Get user details
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Check if user already has an active subscription
+        if (user.subscriptionStatus === 'active') {
+            return res.status(400).json({
+                success: false,
+                message: 'User already has an active subscription'
+            });
+        }
+
+        console.log(`Creating subscription for user: ${user.email}`);
+
+        // Step 1: Create Razorpay Customer
+        const customer = await razorpay.customers.create({
+            name: user.name || 'AutoScroll User',
+            email: user.email,
+            contact: user.phone || '+919999999999',
+            notes: {
+                user_id: userId,
+                platform: 'autoscroll_extension'
+            }
+        });
+
+        console.log(`Created Razorpay customer: ${customer.id}`);
+
+        // Step 2: Create Subscription
+        const subscription = await razorpay.subscriptions.create({
+            plan_id: CONFIG.planId,
+            customer_id: customer.id,
+            quantity: 1,
+            total_count: 60, // 5 years (60 months)
+            customer_notify: true,
+            notes: {
+                user_id: userId,
+                platform: 'autoscroll_extension'
+            }
+        });
+
+        console.log(`Created subscription: ${subscription.id}`);
+        console.log(`Subscription URL: ${subscription.short_url}`);
+
+        // Step 3: Update user with subscription details
+        user.razorpayCustomerId = customer.id;
+        user.razorpaySubscriptionId = subscription.id;
+        user.subscriptionStatus = 'pending'; // Will be updated via webhook
+        await user.save();
+
+        res.json({
+            success: true,
+            data: {
+                subscriptionId: subscription.id,
+                customerId: customer.id,
+                subscriptionUrl: subscription.short_url,
+                amount: CONFIG.subscriptionPrice,
+                currency: 'INR',
+                status: 'created'
+            },
+            message: 'Subscription created successfully. Please complete payment.'
+        });
+
+    } catch (error) {
+        console.error('Create subscription error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create subscription',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * 📊 Get subscription status
+ */
+router.get('/status/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        let subscriptionDetails = null;
+        if (user.razorpaySubscriptionId) {
+            try {
+                subscriptionDetails = await razorpay.subscriptions.fetch(user.razorpaySubscriptionId);
+            } catch (error) {
+                console.error('Error fetching subscription details:', error);
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                userId,
+                subscriptionStatus: user.subscriptionStatus,
+                isSubscriptionActive: user.isSubscriptionActive,
+                subscriptionExpiry: user.subscriptionExpiry,
+                hasAutoRenewal: user.hasAutoRenewal,
+                subscriptionId: user.razorpaySubscriptionId,
+                customerId: user.razorpayCustomerId,
+                razorpayStatus: subscriptionDetails?.status || null,
+                nextChargeDate: subscriptionDetails?.current_end ? new Date(subscriptionDetails.current_end * 1000) : null
+            }
+        });
+
+    } catch (error) {
+        console.error('Status check error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get subscription status',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * ❌ Cancel subscription
+ */
+router.post('/cancel/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        if (user.razorpaySubscriptionId) {
+            // Cancel the subscription in Razorpay
+            await razorpay.subscriptions.cancel(user.razorpaySubscriptionId, {
+                cancel_at_cycle_end: 0 // Cancel immediately
+            });
+        }
+
+        // Update user status
+        user.subscriptionStatus = 'cancelled';
+        user.hasAutoRenewal = false;
+        user.cancelledAt = new Date();
+        await user.save();
+
+        res.json({
+            success: true,
+            message: 'Subscription cancelled successfully'
+        });
+
+    } catch (error) {
+        console.error('Cancel subscription error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to cancel subscription',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * 🔔 Webhook handler for Razorpay events
+ */
+router.post('/webhook', async (req, res) => {
+    try {
+        const signature = req.headers['x-razorpay-signature'];
+        const body = JSON.stringify(req.body);
+
+        // Verify webhook signature
+        const expectedSignature = crypto
+            .createHmac('sha256', CONFIG.webhookSecret)
+            .update(body)
+            .digest('hex');
+
+        if (signature !== expectedSignature && process.env.NODE_ENV === 'production') {
+            console.log('❌ Invalid webhook signature');
+            return res.status(400).json({ success: false, message: 'Invalid signature' });
+        }
+
+        const event = req.body;
+        console.log(`🔔 Webhook received: ${event.event}`);
+
+        switch (event.event) {
+            case 'subscription.activated':
+                await handleSubscriptionActivated(event.payload.subscription.entity);
+                break;
+
+            case 'subscription.charged':
+                await handleSubscriptionCharged(event.payload.payment.entity, event.payload.subscription.entity);
+                break;
+
+            case 'subscription.cancelled':
+                await handleSubscriptionCancelled(event.payload.subscription.entity);
+                break;
+
+            case 'subscription.halted':
+                await handleSubscriptionHalted(event.payload.subscription.entity);
+                break;
+
+            default:
+                console.log(`⚠️ Unhandled webhook event: ${event.event}`);
+        }
+
+        res.json({ success: true, message: 'Webhook processed' });
+
+    } catch (error) {
+        console.error('❌ Webhook error:', error);
+        res.status(500).json({ success: false, message: 'Webhook processing failed' });
+    }
+});
+
+// Webhook handlers
+async function handleSubscriptionActivated(subscription) {
+    try {
+        const userId = subscription.notes?.user_id;
+        if (!userId) return;
+
+        const user = await User.findById(userId);
+        if (!user) return;
+
+        user.subscriptionStatus = 'active';
+        user.isSubscriptionActive = true;
+        user.hasAutoRenewal = true;
+        user.subscriptionExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+        await user.save();
+
+        console.log(`✅ Subscription activated for user: ${user.email}`);
+    } catch (error) {
+        console.error('Error handling subscription activation:', error);
+    }
+}
+
+async function handleSubscriptionCharged(payment, subscription) {
+    try {
+        const userId = subscription.notes?.user_id;
+        if (!userId) return;
+
+        const user = await User.findById(userId);
+        if (!user) return;
+
+        // Extend subscription by 30 days
+        const currentExpiry = new Date(user.subscriptionExpiry || new Date());
+        user.subscriptionExpiry = new Date(currentExpiry.getTime() + 30 * 24 * 60 * 60 * 1000);
+        user.lastPaymentDate = new Date();
+        user.subscriptionStatus = 'active';
+        user.isSubscriptionActive = true;
+        await user.save();
+
+        console.log(`💰 Payment received for user: ${user.email}, Amount: ₹${payment.amount / 100}`);
+    } catch (error) {
+        console.error('Error handling subscription charge:', error);
+    }
+}
+
+async function handleSubscriptionCancelled(subscription) {
+    try {
+        const userId = subscription.notes?.user_id;
+        if (!userId) return;
+
+        const user = await User.findById(userId);
+        if (!user) return;
+
+        user.subscriptionStatus = 'cancelled';
+        user.hasAutoRenewal = false;
+        user.cancelledAt = new Date();
+        await user.save();
+
+        console.log(`❌ Subscription cancelled for user: ${user.email}`);
+    } catch (error) {
+        console.error('Error handling subscription cancellation:', error);
+    }
+}
+
+async function handleSubscriptionHalted(subscription) {
+    try {
+        const userId = subscription.notes?.user_id;
+        if (!userId) return;
+
+        const user = await User.findById(userId);
+        if (!user) return;
+
+        user.subscriptionStatus = 'halted';
+        user.isSubscriptionActive = false;
+        await user.save();
+
+        console.log(`⏸️ Subscription halted for user: ${user.email}`);
+    } catch (error) {
+        console.error('Error handling subscription halt:', error);
+    }
+}
+
+/**
+ * 🧪 Test endpoint for development
+ */
+router.get('/test-config', async (req, res) => {
+    try {
+        const plan = await razorpay.plans.fetch(CONFIG.planId);
+        
+        res.json({
+            success: true,
+            message: 'Configuration test passed',
+            data: {
+                environment: process.env.NODE_ENV,
+                planId: CONFIG.planId,
+                planActive: plan.item.active,
+                planAmount: plan.item.amount / 100,
+                webhookUrl: `${CONFIG.apiBaseUrl}/api/upi-autopay/webhook`
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Configuration test failed',
+            error: error.message
+        });
+    }
+});
+
+module.exports = router;
 
 /**
  * Get AutoPay plan configuration
