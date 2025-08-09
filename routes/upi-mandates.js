@@ -144,14 +144,6 @@ const UPI_CONFIG = {
 // Create UPI Autopay Mandate using Razorpay
 router.post('/create-mandate', async (req, res) => {
     try {
-        // Add deprecation warning headers
-        res.set({
-            'X-Deprecated': 'true',
-            'X-Deprecation-Notice': 'This endpoint is deprecated. Use /api/upi-autopay/create-autopay instead.',
-            'X-Sunset-Date': '2025-11-08', // 3 months from now
-            'X-Alternative-Endpoint': '/api/upi-autopay/create-autopay'
-        });
-
         const { userId, userUpiId, amount = CONFIG.subscriptionPrice } = req.body;
 
         if (!userId || !userUpiId) {
@@ -361,14 +353,6 @@ router.post('/create', async (req, res) => {
 // Check mandate status
 router.get('/status/:userId', async (req, res) => {
     try {
-        // Add deprecation warning headers
-        res.set({
-            'X-Deprecated': 'true',
-            'X-Deprecation-Notice': 'This endpoint is deprecated. Use /api/upi-autopay/status/:userId instead.',
-            'X-Sunset-Date': '2025-11-08', // 3 months from now
-            'X-Alternative-Endpoint': '/api/upi-autopay/status/:userId'
-        });
-
         const { userId } = req.params;
 
         const mandate = await UpiMandate.findOne({
@@ -850,14 +834,6 @@ router.get('/callback', async (req, res) => {
 // Cancel mandate using Razorpay
 router.post('/cancel-mandate', async (req, res) => {
     try {
-        // Add deprecation warning headers
-        res.set({
-            'X-Deprecated': 'true',
-            'X-Deprecation-Notice': 'This endpoint is deprecated. Use /api/upi-autopay/cancel/:userId instead.',
-            'X-Sunset-Date': '2025-11-08', // 3 months from now
-            'X-Alternative-Endpoint': '/api/upi-autopay/cancel/:userId'
-        });
-
         const { userId, mandateId } = req.body;
 
         if (!userId) {

@@ -56,15 +56,15 @@ npm start
 ## API Endpoints
 
 - `POST /api/users/register` - User registration
-- `POST /api/upi-autopay/create-autopay` - Create UPI AutoPay subscription
-- `POST /api/upi-autopay/webhook` - Razorpay AutoPay webhooks
+- `POST /api/upi-mandates/create-mandate` - Create UPI mandate
+- `POST /api/upi-mandates/webhook` - Razorpay webhooks
 - `GET /api/admin/dashboard` - Admin dashboard
 
 ## Webhook URL
 
 For Razorpay webhook configuration:
 ```
-https://your-app.onrender.com/api/upi-autopay/webhook
+https://your-app.onrender.com/api/upi-mandates/webhook
 ```
 
 ## License

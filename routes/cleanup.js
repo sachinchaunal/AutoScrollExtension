@@ -139,28 +139,6 @@ router.post('/cleanup-expired-trials', async (req, res) => {
     }
 });
 
-// General expired cleanup endpoint (what tests expect)
-router.post('/expired', async (req, res) => {
-    try {
-        res.json({
-            success: false,
-            message: 'General expired cleanup endpoint',
-            note: 'Use specific cleanup endpoints for different operations',
-            available: [
-                'POST /api/cleanup/expired-trials - Clean up expired trial users',
-                'POST /api/cleanup/update-expired-subscriptions - Update expired subscriptions',
-                'POST /api/cleanup/comprehensive - Run all cleanup operations'
-            ]
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Error accessing cleanup endpoint',
-            error: error.message
-        });
-    }
-});
-
 // Cleanup expired trials (alias)
 router.post('/expired-trials', async (req, res) => {
     try {

@@ -79,6 +79,10 @@ const userSchema = new mongoose.Schema({
     lastPaymentDate: {
         type: Date
     },
+    hasAutoRenewal: {
+        type: Boolean,
+        default: false
+    },
     autoPayEnabled: {
         type: Boolean,
         default: false
@@ -130,6 +134,9 @@ const userSchema = new mongoose.Schema({
     razorpaySubscriptionId: {
         type: String
     },
+    upiMandateId: {
+        type: String
+    },
     paymentHistory: [{
         paymentId: String,
         amount: Number,
@@ -165,53 +172,38 @@ userSchema.pre('save', function(next) {
 
 // Virtual for checking if subscription is active
 userSchema.virtual('isSubscriptionActive').get(function() {
-    if (this.subscriptionStatus === 'active' && this.subscriptionExpiry) {
+    if (['active', 'cancelled'].includes(this.subscriptionStatus) && this.subscriptionExpiry) {
         return new Date() < this.subscriptionExpiry;
     }
-    
     if (this.subscriptionStatus === 'trial' && this.trialDaysRemaining > 0) {
         return true;
     }
-    
     return false;
 });
 
 // Virtual for checking if user can use extension
 userSchema.virtual('canUseExtension').get(function() {
-    // Blocked users cannot use extension
-    if (this.subscriptionStatus === 'blocked') {
-        return false;
-    }
-    
-    // Active subscription
-    if (this.subscriptionStatus === 'active' && this.subscriptionExpiry) {
+    if (this.subscriptionStatus === 'blocked') return false;
+    if (['active', 'cancelled'].includes(this.subscriptionStatus) && this.subscriptionExpiry) {
         return new Date() < this.subscriptionExpiry;
     }
-    
-    // Active trial
-    if (this.subscriptionStatus === 'trial') {
-        return this.trialDaysRemaining > 0;
-    }
-    
+    if (this.subscriptionStatus === 'trial') return this.trialDaysRemaining > 0;
     return false;
 });
 
 // Virtual for days until subscription expires
 userSchema.virtual('daysUntilExpiry').get(function() {
     let expiryDate;
-    
     if (this.subscriptionStatus === 'trial' && this.trialEndDate) {
         expiryDate = this.trialEndDate;
-    } else if (this.subscriptionStatus === 'active' && this.subscriptionExpiry) {
+    } else if (['active', 'cancelled'].includes(this.subscriptionStatus) && this.subscriptionExpiry) {
         expiryDate = this.subscriptionExpiry;
     } else {
         return 0;
     }
-    
     const now = new Date();
     const diffTime = expiryDate - now;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
     return Math.max(0, diffDays);
 });
 

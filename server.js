@@ -1,4 +1,5 @@
 const express = require('express');
+const bodyParser = require('body-parser');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -17,12 +18,11 @@ const subscriptionRoutes = require('./routes/subscriptions');
 const analyticsRoutes = require('./routes/analytics');
 const adminRoutes = require('./routes/admin');
 const cleanupRoutes = require('./routes/cleanup');
-const upiAutopayRoutes = require('./routes/upi-autopay');
+// const upiMandateRoutes = require('./routes/upi-mandates'); // Legacy (disabled)
 const deviceVerificationRoutes = require('./routes/device-verification');
 const { router: trialManagementRoutes } = require('./routes/trial-management');
 const websiteRoutes = require('./routes/website');
 const webAuthRoutes = require('./routes/web-auth');
-const deprecatedRoutes = require('./routes/deprecated');
 
 const app = express();
 
@@ -62,19 +62,19 @@ validateConfig();
 // Connect to MongoDB
 connectDB();
 
-// Middleware - Configure Helmet with relaxed CSP for test dashboard and payment integration
+// Middleware - Configure Helmet with relaxed CSP for test dashboard
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://checkout.razorpay.com", "https://*.razorpay.com"], // Allow inline scripts and Razorpay
-            styleSrc: ["'self'", "'unsafe-inline'", "https://checkout.razorpay.com", "https://*.razorpay.com"], // Allow inline styles and Razorpay
-            imgSrc: ["'self'", "data:", "blob:", "https:", "https://checkout.razorpay.com", "https://*.razorpay.com"], // Allow images from various sources
-            connectSrc: ["'self'", CONFIG.apiBaseUrl, "https://autoscrollextension.onrender.com", "https://api.razorpay.com", "https://checkout.razorpay.com", "https://*.razorpay.com"],
-            fontSrc: ["'self'", "https:", "data:", "https://checkout.razorpay.com", "https://*.razorpay.com"],
-            frameSrc: ["'self'", "https://api.razorpay.com", "https://checkout.razorpay.com", "https://*.razorpay.com"], // Allow Razorpay frames
+            scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline scripts for test dashboard
+            styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles
+            imgSrc: ["'self'", "data:", "blob:", "https:"], // Allow images from various sources
+            connectSrc: ["'self'", CONFIG.apiBaseUrl, "https://autoscrollextension.onrender.com"],
+            fontSrc: ["'self'", "https:", "data:"],
             objectSrc: ["'none'"],
             mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
         },
     },
 }));
@@ -114,7 +114,14 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-app.use(express.json({ limit: '10mb' }));
+// Use raw body for Razorpay webhook to verify signature
+app.use('/api/subscriptions/webhook', bodyParser.raw({ type: '*/*' }));
+
+// JSON parser for all other routes
+app.use((req, res, next) => {
+    if (req.originalUrl === '/api/subscriptions/webhook') return next();
+    return express.json({ limit: '10mb' })(req, res, next);
+});
 app.use(express.urlencoded({ extended: true }));
 
 // Session configuration for web authentication
@@ -142,10 +149,9 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/cleanup', cleanupRoutes);
-app.use('/api/upi-autopay', upiAutopayRoutes);
+// app.use('/api/upi-mandates', upiMandateRoutes); // Legacy (disabled)
 app.use('/api/device', deviceVerificationRoutes);
 app.use('/api/trials', trialManagementRoutes);
-app.use('/api/deprecated', deprecatedRoutes);
 app.use('/api', websiteRoutes);
 
 // Individual page routes
@@ -288,7 +294,7 @@ app.get('/api/status', (req, res) => {
             users: '/api/users',
             payments: '/api/payments',
             subscriptions: '/api/subscriptions',
-            upiAutopay: '/api/upi-autopay',
+            // upiMandates: '/api/upi-mandates',
             analytics: '/api/analytics',
             admin: '/api/admin',
             cleanup: '/api/cleanup',
@@ -325,7 +331,7 @@ app.use('*', (req, res) => {
         availableEndpoints: CONFIG.nodeEnv === 'development' ? [
             `${CONFIG.apiBaseUrl}/api/users`,
             `${CONFIG.apiBaseUrl}/api/payments`,
-            `${CONFIG.apiBaseUrl}/api/upi-autopay`,
+            `${CONFIG.apiBaseUrl}/api/upi-mandates`,
             `${CONFIG.apiBaseUrl}/api/admin`
         ] : undefined
     });
@@ -335,12 +341,10 @@ app.use('*', (req, res) => {
 app.listen(CONFIG.port, CONFIG.host, () => {
     console.log(`\n🚀 AutoScroll Backend Server running on ${CONFIG.apiBaseUrl}`);
     console.log(`📊 Environment: ${CONFIG.nodeEnv}`);
-    console.log(`🔗 UPI AutoPay system active with subscription management`);
+    console.log(`🔗 UPI Mandate cron job scheduled for daily 2 AM IST`);
 });
 
-// Note: AutoPay subscriptions are handled automatically by Razorpay
-// No manual cron job needed for recurring charges
-console.log('AutoPay system initialized - recurring charges handled by Razorpay Subscriptions API');
+// Legacy UPI mandate cron job removed
 
 // Export CONFIG for use in other modules
 module.exports = { app, CONFIG };

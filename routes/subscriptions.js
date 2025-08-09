@@ -1,6 +1,44 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
+const bodyParser = require('body-parser');
+const Razorpay = require('razorpay');
+const axios = require('axios');
 const User = require('../models/User');
+const ProcessedEvent = require('../models/ProcessedEvent');
+
+// JSON parser for non-webhook routes in this router (the app has global json too; this is safe)
+router.use((req, res, next) => {
+    // Skip for the exact webhook path where we need raw body
+    if (req.path === '/webhook') return next();
+    return bodyParser.json({ limit: '1mb' })(req, res, next);
+});
+
+// Razorpay client
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+});
+
+// Config
+const PLAN_INTERVAL = process.env.SUBSCRIPTION_INTERVAL || 'monthly'; // monthly
+const PLAN_AMOUNT = parseInt(process.env.SUBSCRIPTION_PRICE || '9', 10) * 100; // in paise
+const PLAN_CURRENCY = 'INR';
+const PLAN_NOTE = 'AutoScroll Premium Plan';
+const WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || process.env.RAZORPAY_KEY_SECRET;
+const RZP_PLAN_ID = process.env.RAZORPAY_PLAN_ID; // if provided, we reuse
+
+function addMonths(date, months) {
+    const d = new Date(date);
+    d.setMonth(d.getMonth() + months);
+    return d;
+}
+
+function verifySignature(rawBody, signature, secret) {
+    if (!signature) return false;
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    return expected === signature;
+}
 
 // Get all subscriptions overview
 router.get('/', async (req, res) => {
@@ -55,6 +93,189 @@ router.get('/', async (req, res) => {
             message: 'Error fetching subscriptions overview',
             error: error.message
         });
+    }
+});
+/**
+ * Create or fetch plan (idempotent)
+ */
+router.post('/create-plan', async (req, res) => {
+    try {
+        // If plan id is configured, fetch and return
+        if (RZP_PLAN_ID) {
+            try {
+                const plan = await razorpay.plans.fetch(RZP_PLAN_ID);
+                return res.json({ success: true, data: { planId: plan.id, amount: plan.item.amount, currency: plan.item.currency } });
+            } catch (_) {
+                // fall through to attempt create
+            }
+        }
+
+        // Create a monthly plan
+        const plan = await razorpay.plans.create({
+            period: 'monthly',
+            interval: 1,
+            item: {
+                name: PLAN_NOTE,
+                amount: PLAN_AMOUNT,
+                currency: PLAN_CURRENCY,
+            },
+            notes: { app: 'AutoScroll' },
+        });
+
+        return res.json({ success: true, data: { planId: plan.id, amount: plan.item.amount, currency: plan.item.currency } });
+    } catch (error) {
+        console.error('Create plan error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to create plan', error: error.message });
+    }
+});
+
+/**
+ * Create hosted subscription link (Razorpay Subscription Link)
+ */
+router.post('/create-subscription-link', async (req, res) => {
+    try {
+        const { userId, customer } = req.body;
+        if (!userId) return res.status(400).json({ success: false, message: 'userId is required' });
+
+        // Ensure user exists
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        // Ensure a plan exists
+        let planId = RZP_PLAN_ID;
+        if (!planId) {
+            const plan = await razorpay.plans.create({
+                period: 'monthly',
+                interval: 1,
+                item: { name: PLAN_NOTE, amount: PLAN_AMOUNT, currency: PLAN_CURRENCY },
+            });
+            planId = plan.id;
+        }
+
+        // Create subscription link via REST (SDK may not expose subscription_links)
+        const auth = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64');
+        const payload = {
+            plan_id: planId,
+            customer_notify: 1,
+            expire_by: Math.floor(Date.now() / 1000) + 15 * 60,
+            quantity: 1,
+            notes: { user_id: user.id, email: user.email },
+            customer_details: {
+                name: (customer && customer.name) || user.name || 'AutoScroll User',
+                email: (customer && customer.email) || user.email,
+                contact: (customer && customer.contact) || undefined,
+            },
+            options: { checkout: { method: { upi: 1 } } },
+        };
+        const { data: subLink } = await axios.post('https://api.razorpay.com/v1/subscription_links', payload, {
+            headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/json' },
+        });
+
+        return res.json({ success: true, data: { id: subLink.id, short_url: subLink.short_url, status: subLink.status } });
+    } catch (error) {
+        console.error('Create subscription link error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to create subscription link', error: error.message });
+    }
+});
+
+/**
+ * Webhook for Razorpay Subscriptions and Invoices
+ */
+const bodyParser = require('body-parser');
+router.post('/webhook', bodyParser.raw({ type: '*/*' }), async (req, res) => {
+    try {
+    const signature = req.headers['x-razorpay-signature'];
+    const rawBody = req.body instanceof Buffer ? req.body.toString('utf8') : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body));
+        if (WEBHOOK_SECRET && !verifySignature(rawBody, signature, WEBHOOK_SECRET)) {
+            return res.status(400).json({ success: false, message: 'Invalid signature' });
+        }
+
+    const event = typeof req.body === 'object' && !(req.body instanceof Buffer) ? req.body : JSON.parse(rawBody);
+        const eventId = event?.payload?.payment?.entity?.id || event?.payload?.subscription?.entity?.id || event?.id || `${event.event}_${Date.now()}`;
+
+        // Idempotency
+        if (await ProcessedEvent.hasProcessed(eventId)) {
+            return res.json({ success: true, message: 'Already processed' });
+        }
+
+        const markProcessed = async () => {
+            try { await ProcessedEvent.create({ eventId, type: event.event, payload: event }); } catch (_) {}
+        };
+
+        switch (event.event) {
+            case 'subscription.activated': {
+                const sub = event.payload.subscription.entity;
+                const userId = sub.notes?.user_id;
+                if (userId) {
+                    const user = await User.findById(userId);
+                    if (user) {
+                        user.subscriptionStatus = 'active';
+                        user.hasAutoRenewal = true;
+                        user.razorpaySubscriptionId = sub.id;
+                        user.subscriptionExpiry = addMonths(new Date(), 1);
+                        user.lastPaymentDate = new Date();
+                        await user.save();
+                    }
+                }
+                break;
+            }
+            case 'invoice.paid': {
+                const sub = event.payload.subscription?.entity;
+                const userId = sub?.notes?.user_id;
+                if (userId) {
+                    const user = await User.findById(userId);
+                    if (user) {
+                        const base = user.subscriptionExpiry && user.subscriptionExpiry > new Date() ? user.subscriptionExpiry : new Date();
+                        user.subscriptionExpiry = addMonths(base, 1);
+                        user.subscriptionStatus = 'active';
+                        user.hasAutoRenewal = true;
+                        if (sub?.id) user.razorpaySubscriptionId = sub.id;
+                        user.lastPaymentDate = new Date();
+                        await user.save();
+                    }
+                }
+                break;
+            }
+            case 'invoice.payment_failed':
+            case 'invoice.failed': {
+                // You may record failure; do not change access immediately
+                break;
+            }
+            case 'subscription.paused':
+            case 'subscription.halted': {
+                // Keep current expiry; disable auto-renew
+                const sub = event.payload.subscription.entity;
+                const userId = sub.notes?.user_id;
+                if (userId) {
+                    const user = await User.findById(userId);
+                    if (user) { user.hasAutoRenewal = false; await user.save(); }
+                }
+                break;
+            }
+            case 'subscription.cancelled': {
+                const sub = event.payload.subscription.entity;
+                const userId = sub.notes?.user_id;
+                if (userId) {
+                    const user = await User.findById(userId);
+                    if (user) {
+                        user.subscriptionStatus = 'cancelled';
+                        user.hasAutoRenewal = false;
+                        // keep subscriptionExpiry as-is to preserve remaining access
+                        await user.save();
+                    }
+                }
+                break;
+            }
+            default:
+                // ignore others
+                break;
+        }
+
+        await markProcessed();
+        return res.json({ success: true });
+    } catch (error) {
+        console.error('Webhook error:', error);
+        return res.status(500).json({ success: false, message: 'Webhook processing failed', error: error.message });
     }
 });
 
@@ -130,36 +351,6 @@ router.get('/user/:userId', async (req, res) => {
     }
 });
 
-// Get subscription system status (general endpoint)
-router.get('/status', async (req, res) => {
-    try {
-        // Get general subscription system status with simple queries
-        const totalUsers = await User.countDocuments({});
-        const activeSubscriptions = await User.countDocuments({ subscriptionStatus: 'active' });
-        const trialUsers = await User.countDocuments({ subscriptionStatus: 'trial' });
-        
-        res.json({
-            success: true,
-            message: 'Subscription system status',
-            data: {
-                systemStatus: 'operational',
-                totalUsers,
-                activeSubscriptions,
-                trialUsers,
-                timestamp: new Date().toISOString(),
-                note: 'Use /status/:userId for specific user subscription status'
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching subscription status:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch subscription system status',
-            error: error.message
-        });
-    }
-});
-
 // Get subscription status
 router.get('/status/:userId', async (req, res) => {
     try {
@@ -180,7 +371,7 @@ router.get('/status/:userId', async (req, res) => {
         const isTrialActive = trialEndDate && now < trialEndDate;
         const trialDaysRemaining = isTrialActive ? Math.ceil((trialEndDate - now) / (24 * 60 * 60 * 1000)) : 0;
 
-        const canUseExtension = user.isSubscriptionActive || isTrialActive;
+    const canUseExtension = user.canUseExtension || isTrialActive;
 
         res.json({
             success: true,
@@ -192,7 +383,8 @@ router.get('/status/:userId', async (req, res) => {
                 trialDaysRemaining,
                 isTrialActive,
                 trialEndDate: user.trialEndDate,
-                subscriptionExpiry: user.subscriptionExpiry
+                subscriptionExpiry: user.subscriptionExpiry,
+                hasAutoRenewal: !!user.hasAutoRenewal
             }
         });
     } catch (error) {
@@ -202,6 +394,37 @@ router.get('/status/:userId', async (req, res) => {
             message: 'Error checking subscription status',
             error: error.message
         });
+    }
+});
+
+// Force refresh status (alias for GET but keeps payload contract consistent)
+router.post('/refresh-status', async (req, res) => {
+    try {
+        const { userId } = req.body;
+        if (!userId) return res.status(400).json({ success: false, message: 'userId is required' });
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+        const now = new Date();
+        const isTrialActive = user.trialEndDate && now < user.trialEndDate;
+        const trialDaysRemaining = isTrialActive ? Math.ceil((user.trialEndDate - now) / (24 * 60 * 60 * 1000)) : 0;
+
+        return res.json({
+            success: true,
+            message: 'Status refreshed',
+            data: {
+                userId: user.id,
+                subscriptionStatus: user.subscriptionStatus,
+                canUseExtension: user.canUseExtension || isTrialActive,
+                trialDaysRemaining,
+                subscriptionExpiry: user.subscriptionExpiry,
+                hasAutoRenewal: !!user.hasAutoRenewal,
+                refreshed: true
+            }
+        });
+    } catch (error) {
+        console.error('Refresh status error:', error);
+        return res.status(500).json({ success: false, message: 'Failed to refresh status', error: error.message });
     }
 });
 
@@ -272,9 +495,9 @@ router.get('/test', (req, res) => {
 // Cancel subscription
 router.post('/cancel', async (req, res) => {
     try {
-        const { userId } = req.body;
+    const { userId } = req.body;
 
-        const user = await User.findOne({ userId });
+    const user = await User.findById(userId);
 
         if (!user) {
             return res.status(404).json({
@@ -283,7 +506,17 @@ router.post('/cancel', async (req, res) => {
             });
         }
 
+        // Cancel at Razorpay if we have subscription id
+        if (user.razorpaySubscriptionId) {
+            try {
+                await razorpay.subscriptions.cancel(user.razorpaySubscriptionId, { cancel_at_cycle_end: 0 });
+            } catch (e) {
+                console.warn('Razorpay cancel failed or already cancelled:', e.message);
+            }
+        }
+
         user.subscriptionStatus = 'cancelled';
+        user.hasAutoRenewal = false;
         await user.save();
 
         res.json({
@@ -379,3 +612,36 @@ router.get('/stats', async (req, res) => {
 });
 
 module.exports = router;
+ 
+// Dev-only helpers (not mounted in production)
+if (process.env.NODE_ENV !== 'production') {
+    router.post('/simulate-activation', async (req, res) => {
+        try {
+            const { userId } = req.body;
+            const user = await User.findById(userId);
+            if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+            user.subscriptionStatus = 'active';
+            user.hasAutoRenewal = true;
+            user.subscriptionExpiry = addMonths(new Date(), 1);
+            user.lastPaymentDate = new Date();
+            await user.save();
+            return res.json({ success: true, message: 'Simulated activation', data: { userId: user.id, subscriptionExpiry: user.subscriptionExpiry } });
+        } catch (e) {
+            return res.status(500).json({ success: false, message: e.message });
+        }
+    });
+
+    router.post('/simulate-cancel', async (req, res) => {
+        try {
+            const { userId } = req.body;
+            const user = await User.findById(userId);
+            if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+            user.subscriptionStatus = 'cancelled';
+            user.hasAutoRenewal = false;
+            await user.save();
+            return res.json({ success: true, message: 'Simulated cancel', data: { userId: user.id } });
+        } catch (e) {
+            return res.status(500).json({ success: false, message: e.message });
+        }
+    });
+}
