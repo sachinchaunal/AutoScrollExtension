@@ -111,9 +111,10 @@ class SubscriptionService {
                 );
             }
             
-            // Calculate subscription start time (immediate start)
+            // Calculate subscription start time (add 2 minutes buffer to ensure it's in the future)
             const now = new Date();
-            const startAt = Math.floor(now.getTime() / 1000); // Current time in Unix timestamp
+            const startTime = new Date(now.getTime() + (2 * 60 * 1000)); // Add 2 minutes
+            const startAt = Math.floor(startTime.getTime() / 1000); // Future time in Unix timestamp
             
             const subscriptionData = {
                 plan_id: plan.id,
