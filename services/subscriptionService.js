@@ -83,10 +83,10 @@ class SubscriptionService {
     }
     
     /**
-     * Create Razorpay subscription for user
+     * Create Razorpay subscription for user (following Razorpay subscription workflow)
      * @param {Object} user - User document
      * @param {string} planType - 'monthly' or 'yearly'
-     * @returns {Promise<Object>} - Subscription details
+     * @returns {Promise<Object>} - Subscription details with subscription link
      */
     static async createUserSubscription(user, planType = 'monthly') {
         try {
@@ -111,34 +111,69 @@ class SubscriptionService {
                 );
             }
             
-            // Calculate subscription start time (immediate or after trial)
+            // Calculate subscription start time (immediate start)
             const now = new Date();
             const startAt = Math.floor(now.getTime() / 1000); // Current time in Unix timestamp
             
             const subscriptionData = {
                 plan_id: plan.id,
-                user_id: user._id.toString(),
-                email: user.email,
-                plan_type: planType,
+                customer_notify: 1, // Send notification to customer
+                quantity: 1,
+                total_count: planType === 'yearly' ? 1 : 12, // 1 billing cycle for yearly, 12 for monthly
                 start_at: startAt,
-                total_count: planType === 'yearly' ? 1 : 12 // 1 year for yearly, 12 months for monthly
+                addons: [],
+                notes: {
+                    user_id: user._id.toString(),
+                    email: user.email,
+                    plan_type: planType,
+                    extension_name: 'AutoScroll Extension'
+                }
             };
             
-            // Create subscription in Razorpay with retry mechanism
+            // Create subscription in Razorpay with retry mechanism (follows image 1 -> 2 flow)
             const razorpaySubscription = await retryRazorpayCall(async () => {
                 return await createSubscription(subscriptionData);
             });
             
-            // Update user subscription details
+            // Initialize subscription structure if not exists
+            if (!user.subscription) {
+                user.subscription = {
+                    trial: {
+                        isActive: false,
+                        startDate: null,
+                        endDate: null
+                    },
+                    razorpay: {},
+                    features: {
+                        autoScroll: false,
+                        analytics: false,
+                        customSettings: false,
+                        prioritySupport: false
+                    },
+                    usage: {
+                        lastAccessedAt: new Date(),
+                        totalAutoScrolls: 0,
+                        dailyUsage: []
+                    }
+                };
+            }
+            
+            // Update user subscription details with Razorpay subscription data
             user.subscription.razorpay.subscriptionId = razorpaySubscription.id;
             user.subscription.razorpay.planId = plan.id;
-            user.subscription.razorpay.status = SUBSCRIPTION_STATUS.CREATED;
+            user.subscription.razorpay.status = SUBSCRIPTION_STATUS.CREATED; // Created state (image 2)
             user.subscription.razorpay.currentPeriodStart = new Date(razorpaySubscription.current_start * 1000);
             user.subscription.razorpay.currentPeriodEnd = new Date(razorpaySubscription.current_end * 1000);
             
+            // Deactivate trial if active
+            if (user.subscription.trial && user.subscription.trial.isActive) {
+                user.subscription.trial.isActive = false;
+            }
+            
             await user.save();
             
-            console.log(`✅ Subscription created for user: ${user.email}, Plan: ${planType}`);
+            console.log(`✅ Subscription created for user: ${user.email}, Plan: ${planType}, ID: ${razorpaySubscription.id}`);
+            console.log(`📧 Subscription link: ${razorpaySubscription.short_url}`);
             
             return {
                 success: true,
@@ -148,10 +183,11 @@ class SubscriptionService {
                     planName: plan.name,
                     amount: plan.amount,
                     currency: plan.currency,
-                    status: razorpaySubscription.status,
+                    status: razorpaySubscription.status, // 'created' state from Razorpay
                     startDate: new Date(razorpaySubscription.current_start * 1000),
                     endDate: new Date(razorpaySubscription.current_end * 1000),
-                    shortUrl: razorpaySubscription.short_url // For payment
+                    shortUrl: razorpaySubscription.short_url, // Subscription link for payment (image 2 -> 3)
+                    authenticateUrl: razorpaySubscription.authenticate_url || razorpaySubscription.short_url
                 }
             };
             
@@ -368,10 +404,23 @@ class SubscriptionService {
                 return { success: false, message: 'User not found' };
             }
             
-            user.updateSubscriptionStatus(subscription);
+            // Activate subscription and enable all features
+            user.subscription.razorpay.status = SUBSCRIPTION_STATUS.ACTIVE;
+            user.subscription.razorpay.currentPeriodStart = new Date(subscription.current_start * 1000);
+            user.subscription.razorpay.currentPeriodEnd = new Date(subscription.current_end * 1000);
+            user.subscription.features.autoScroll = true;
+            user.subscription.features.analytics = true;
+            user.subscription.features.customSettings = true;
+            user.subscription.features.prioritySupport = true;
+            
+            // Deactivate trial
+            if (user.subscription.trial) {
+                user.subscription.trial.isActive = false;
+            }
+            
             await user.save();
             
-            console.log(`✅ Subscription activated for user: ${user.email}`);
+            console.log(`✅ Subscription activated for user: ${user.email}, Plan: ${subscription.plan_id}`);
             return { success: true, message: 'Subscription activated' };
             
         } catch (error) {

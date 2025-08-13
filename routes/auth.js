@@ -274,6 +274,43 @@ router.get('/profile/:userId', async (req, res) => {
 });
 
 /**
+ * Get user settings
+ * GET /api/auth/settings/:userId
+ */
+router.get('/settings/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: {
+                settings: user.settings || {
+                    notifications: true,
+                    autoScrollSpeed: 'medium',
+                    theme: 'light'
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Auth: Get settings error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch settings',
+            error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+        });
+    }
+});
+
+/**
  * Update user settings
  */
 router.put('/settings/:userId', async (req, res) => {

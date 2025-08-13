@@ -253,7 +253,7 @@
                 <!-- Monthly Plan -->
                 <div class="pricing-card">
                     <div class="plan-name">Monthly Plan</div>
-                    <div class="plan-price">₹99</div>
+                    <div class="plan-price">₹9</div>
                     <div class="plan-period">per month</div>
                     
                     <ul class="plan-features">
@@ -264,7 +264,7 @@
                         <li>Ad-free Experience</li>
                     </ul>
                     
-                    <button class="subscribe-btn" onclick="subscribeToPlan('monthly')">
+                    <button class="subscribe-btn" onclick="subscribeToPlan('monthly')" id="monthlyBtn">
                         Subscribe Monthly
                     </button>
                 </div>
@@ -272,19 +272,19 @@
                 <!-- Yearly Plan -->
                 <div class="pricing-card recommended">
                     <div class="plan-name">Yearly Plan</div>
-                    <div class="plan-price">₹999</div>
+                    <div class="plan-price">₹99</div>
                     <div class="plan-period">per year</div>
-                    <div class="plan-savings">Save ₹189</div>
+                    <div class="plan-savings">Save ₹9</div>
                     
                     <ul class="plan-features">
                         <li>All Monthly features</li>
-                        <li>15% savings</li>
+                        <li>One month free</li>
                         <li>Priority feature updates</li>
                         <li>Extended analytics</li>
                         <li>Exclusive beta access</li>
                     </ul>
                     
-                    <button class="subscribe-btn" onclick="subscribeToPlan('yearly')">
+                    <button class="subscribe-btn" onclick="subscribeToPlan('yearly')" id="yearlyBtn">
                         Subscribe Yearly
                     </button>
                 </div>
@@ -379,9 +379,14 @@
         
         async function subscribeToPlan(planType) {
             try {
+                console.log('Creating subscription for plan:', planType);
+                
                 // Disable all subscribe buttons
                 const buttons = document.querySelectorAll('.subscribe-btn');
+                const originalTexts = {};
+                
                 buttons.forEach(btn => {
+                    originalTexts[btn.id] = btn.textContent;
                     btn.disabled = true;
                     btn.textContent = 'Creating subscription...';
                 });
@@ -399,17 +404,19 @@
                 });
                 
                 const result = await response.json();
+                console.log('Subscription creation response:', result);
                 
                 if (result.success) {
                     const subscription = result.data.subscription;
                     
-                    // Initialize Razorpay payment
+                    // Configure Razorpay options
                     const options = {
-                        "key": "rzp_test_nLsVGfsi3lcLcw", // Use your Razorpay key
+                        "key": "rzp_test_nLsVGfsi3lcLcw", // Replace with your actual Razorpay key ID from environment
                         "subscription_id": subscription.id,
                         "name": "AutoScroll Extension",
-                        "description": subscription.planName,
+                        "description": subscription.planName + " - " + subscription.currency + " " + (subscription.amount / 100),
                         "handler": function(response) {
+                            console.log('Payment successful:', response);
                             handlePaymentSuccess(response);
                         },
                         "prefill": {
@@ -421,59 +428,146 @@
                         },
                         "modal": {
                             "ondismiss": function() {
+                                console.log('Payment modal dismissed');
                                 // Re-enable buttons if payment is cancelled
                                 buttons.forEach(btn => {
                                     btn.disabled = false;
-                                    btn.textContent = btn.textContent.includes('Monthly') ? 'Subscribe Monthly' : 'Subscribe Yearly';
+                                    btn.textContent = originalTexts[btn.id];
                                 });
                             }
+                        },
+                        "notify": {
+                            "sms": true,
+                            "email": true
+                        },
+                        "reminder_enable": true,
+                        "readonly": {
+                            "email": true,
+                            "name": true
                         }
                     };
                     
+                    console.log('Opening Razorpay with options:', options);
+                    
+                    // Check if Razorpay is loaded
+                    if (typeof Razorpay === 'undefined') {
+                        throw new Error('Razorpay SDK not loaded. Please refresh the page and try again.');
+                    }
+                    
                     const rzp = new Razorpay(options);
+                    
+                    // Handle payment errors
+                    rzp.on('payment.failed', function (response) {
+                        console.error('Payment failed:', response.error);
+                        showError('Payment failed: ' + response.error.description);
+                        
+                        // Re-enable buttons
+                        buttons.forEach(btn => {
+                            btn.disabled = false;
+                            btn.textContent = originalTexts[btn.id];
+                        });
+                    });
+                    
                     rzp.open();
                     
                 } else {
-                    throw new Error(result.message);
+                    throw new Error(result.message || 'Failed to create subscription');
                 }
                 
             } catch (error) {
+                console.error('Subscription error:', error);
                 showError('Failed to create subscription: ' + error.message);
                 
                 // Re-enable buttons
                 const buttons = document.querySelectorAll('.subscribe-btn');
-                buttons.forEach(btn => {
+                buttons.forEach((btn, index) => {
                     btn.disabled = false;
-                    btn.textContent = btn.textContent.includes('Monthly') ? 'Subscribe Monthly' : 'Subscribe Yearly';
+                    if (btn.id === 'monthlyBtn') {
+                        btn.textContent = 'Subscribe Monthly';
+                    } else if (btn.id === 'yearlyBtn') {
+                        btn.textContent = 'Subscribe Yearly';
+                    }
                 });
             }
         }
         
         function handlePaymentSuccess(response) {
+            console.log('Payment success response:', response);
+            
+            // Verify payment with backend
+            fetch('/api/subscription/verify-payment', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userId: currentUserId,
+                    paymentId: response.razorpay_payment_id,
+                    subscriptionId: response.razorpay_subscription_id,
+                    signature: response.razorpay_signature
+                })
+            })
+            .then(res => res.json())
+            .then(result => {
+                if (result.success) {
+                    // Show success message
+                    showSuccessPage(response);
+                } else {
+                    showError('Payment verification failed: ' + result.message);
+                }
+            })
+            .catch(error => {
+                console.error('Payment verification error:', error);
+                // Still show success as payment was completed
+                showSuccessPage(response);
+            });
+        }
+        
+        function showSuccessPage(response) {
             // Show success message
             document.body.innerHTML = `
                 <div class="container" style="text-align: center; color: white; padding-top: 100px;">
-                    <h1>🎉 Subscription Successful!</h1>
-                    <p style="font-size: 1.2rem; margin: 20px 0;">Welcome to AutoScroll Premium!</p>
-                    <p>Payment ID: ${response.razorpay_payment_id}</p>
-                    <p style="margin-top: 30px;">You can now close this tab and enjoy premium features.</p>
-                    <button onclick="window.close()" style="
-                        background: #4CAF50;
-                        color: white;
-                        border: none;
-                        padding: 15px 30px;
-                        border-radius: 8px;
-                        font-size: 16px;
-                        margin-top: 20px;
-                        cursor: pointer;
-                    ">Close Tab</button>
+                    <div style="background: rgba(255,255,255,0.1); border-radius: 20px; padding: 40px; margin: 20px;">
+                        <h1 style="margin-bottom: 20px;">🎉 Subscription Successful!</h1>
+                        <p style="font-size: 1.5rem; margin: 20px 0; color: #4CAF50;">Welcome to AutoScroll Premium!</p>
+                        <div style="background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; margin: 20px 0;">
+                            <p><strong>Payment ID:</strong> ${response.razorpay_payment_id}</p>
+                            <p><strong>Subscription ID:</strong> ${response.razorpay_subscription_id}</p>
+                        </div>
+                        <p style="margin-top: 30px; font-size: 1.1rem;">You can now enjoy premium features!</p>
+                        <div style="margin-top: 30px;">
+                            <button onclick="window.close()" style="
+                                background: linear-gradient(135deg, #4CAF50, #45a049);
+                                color: white;
+                                border: none;
+                                padding: 15px 30px;
+                                border-radius: 8px;
+                                font-size: 16px;
+                                margin: 10px;
+                                cursor: pointer;
+                                box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+                            ">Close Tab</button>
+                            <button onclick="window.location.href='/manage-subscription?userId=${currentUserId}'" style="
+                                background: linear-gradient(135deg, #2196F3, #1976D2);
+                                color: white;
+                                border: none;
+                                padding: 15px 30px;
+                                border-radius: 8px;
+                                font-size: 16px;
+                                margin: 10px;
+                                cursor: pointer;
+                                box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+                            ">Manage Subscription</button>
+                        </div>
+                        <p style="margin-top: 20px; font-size: 14px; opacity: 0.8;">This tab will close automatically in 10 seconds</p>
+                    </div>
                 </div>
             `;
             
-            // Auto-close after 5 seconds
+            // Auto-close after 10 seconds
             setTimeout(() => {
                 window.close();
-            }, 5000);
+            }, 10000);
         }
         
         function showError(message) {

@@ -19,7 +19,7 @@ const SUBSCRIPTION_PLANS = {
     MONTHLY: {
         id: process.env.RAZORPAY_PLAN_ID || 'plan_monthly_premium', // Use env plan ID or default
         name: 'AutoScroll Premium Monthly',
-        amount: (process.env.SUBSCRIPTION_PRICE || 9) * 100, // Convert ₹9 to paise
+        amount: (process.env.SUBSCRIPTION_PRICE || 9) * 100, // Convert ₹9 to paise (900 paise = ₹9)
         currency: 'INR',
         period: 'monthly',
         interval: 1,
@@ -29,11 +29,11 @@ const SUBSCRIPTION_PLANS = {
     YEARLY: {
         id: process.env.RAZORPAY_YEARLY_PLAN_ID || 'plan_yearly_premium',
         name: 'AutoScroll Premium Yearly',
-        amount: ((process.env.SUBSCRIPTION_PRICE || 9) * 12 * 100), // 12 months worth
+        amount: (process.env.SUBSCRIPTION_PRICE || 9) * 11 * 100, // 11 months price for yearly (1 month free), ₹99
         currency: 'INR',
         period: 'yearly',
         interval: 1,
-        description: 'Yearly subscription for AutoScroll Premium features',
+        description: 'Yearly subscription for AutoScroll Premium features (Save 1 month)',
         total_count: 1 // One billing cycle for yearly
     }
 };
@@ -117,27 +117,36 @@ async function createPlan(planDetails) {
 }
 
 /**
- * Create a subscription for a customer
+ * Create a subscription for a customer (Enhanced for subscription workflow)
  * @param {object} subscriptionData - Subscription details
- * @returns {Promise<object>} - Created subscription
+ * @returns {Promise<object>} - Created subscription with links
  */
 async function createSubscription(subscriptionData) {
     try {
         const subscription = await razorpay.subscriptions.create({
             plan_id: subscriptionData.plan_id,
-            customer_notify: 1,
-            quantity: 1,
-            total_count: subscriptionData.total_count || 12, // 12 months for annual
+            customer_notify: subscriptionData.customer_notify || 1,
+            quantity: subscriptionData.quantity || 1,
+            total_count: subscriptionData.total_count || 12, // 12 months for annual by default
             start_at: subscriptionData.start_at,
             addons: subscriptionData.addons || [],
             notes: {
                 user_id: subscriptionData.user_id,
                 email: subscriptionData.email,
-                plan_type: subscriptionData.plan_type || 'monthly'
+                plan_type: subscriptionData.plan_type || 'monthly',
+                extension_name: 'AutoScroll Extension',
+                ...subscriptionData.notes
+            },
+            // Set callback URLs for subscription flow
+            notify_info: {
+                notify_phone: subscriptionData.notify_phone,
+                notify_email: subscriptionData.notify_email || subscriptionData.email
             }
         });
         
         console.log('✅ Razorpay subscription created:', subscription.id);
+        console.log('📧 Subscription link available:', subscription.short_url);
+        
         return subscription;
     } catch (error) {
         console.error('❌ Failed to create Razorpay subscription:', error);

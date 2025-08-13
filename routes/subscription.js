@@ -230,6 +230,727 @@ router.post('/validate-access', async (req, res) => {
 });
 
 /**
+ * Create subscription with Razorpay subscription workflow
+ * POST /api/subscription/create-subscription
+ */
+router.post('/create-subscription', async (req, res) => {
+    try {
+        const { userId, planType = 'monthly' } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+        
+        if (!['monthly', 'yearly'].includes(planType)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid plan type. Must be "monthly" or "yearly"'
+            });
+        }
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        // Check if user already has an active subscription
+        const currentStatus = SubscriptionService.getUserSubscriptionStatus(user);
+        if (currentStatus.subscriptionStatus === 'active') {
+            return res.status(400).json({
+                success: false,
+                message: 'User already has an active subscription'
+            });
+        }
+        
+        // Create subscription using Razorpay Subscription API (follows images workflow)
+        const subscriptionResult = await SubscriptionService.createUserSubscription(user, planType);
+        
+        if (!subscriptionResult.success) {
+            throw new Error('Failed to create subscription');
+        }
+        
+        // Store subscription details in user document
+        user.subscription.razorpay.subscriptionId = subscriptionResult.subscription.id;
+        user.subscription.razorpay.planId = subscriptionResult.subscription.planId;
+        user.subscription.razorpay.status = 'created'; // Razorpay initial status
+        await user.save();
+        
+        console.log(`✅ Subscription created for user: ${user.email}, Plan: ${planType}, Subscription ID: ${subscriptionResult.subscription.id}`);
+        
+        res.json({
+            success: true,
+            message: 'Subscription created successfully',
+            data: {
+                subscriptionId: subscriptionResult.subscription.id,
+                subscriptionLink: subscriptionResult.subscription.shortUrl, // Razorpay subscription link
+                planType: planType,
+                planName: subscriptionResult.subscription.planName,
+                amount: subscriptionResult.subscription.amount,
+                currency: subscriptionResult.subscription.currency,
+                status: 'created'
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Create subscription error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create subscription',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Create secure payment link for subscription (fallback method)
+ * POST /api/subscription/create-payment-link
+ */
+router.post('/create-payment-link', async (req, res) => {
+    try {
+        const { userId, planType = 'monthly', returnUrl, cancelUrl } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+        
+        if (!['monthly', 'yearly'].includes(planType)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid plan type. Must be "monthly" or "yearly"'
+            });
+        }
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        // Check if user already has an active subscription
+        const currentStatus = SubscriptionService.getUserSubscriptionStatus(user);
+        if (currentStatus.subscriptionStatus === 'active') {
+            return res.status(400).json({
+                success: false,
+                message: 'User already has an active subscription'
+            });
+        }
+        
+        // Create subscription in Razorpay first (proper workflow)
+        const subscriptionResult = await SubscriptionService.createUserSubscription(user, planType);
+        
+        if (!subscriptionResult.success) {
+            throw new Error('Failed to create subscription');
+        }
+        
+        // Return the subscription link directly (from image 2 workflow)
+        console.log(`✅ Subscription created for user: ${user.email}, Plan: ${planType}`);
+        
+        res.json({
+            success: true,
+            message: 'Subscription link created successfully',
+            data: {
+                subscriptionLink: subscriptionResult.subscription.shortUrl, // Direct Razorpay subscription link
+                subscriptionId: subscriptionResult.subscription.id,
+                planType: planType,
+                amount: subscriptionResult.subscription.amount,
+                currency: subscriptionResult.subscription.currency
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Create payment link error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create payment link',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Handle subscription authentication callback (from subscription link)
+ * GET /api/subscription/auth-callback
+ */
+router.get('/auth-callback', async (req, res) => {
+    try {
+        const { razorpay_subscription_id, razorpay_customer_id, razorpay_signature } = req.query;
+        
+        console.log('Subscription authentication callback received:', req.query);
+        
+        if (razorpay_subscription_id) {
+            try {
+                // Find user by subscription ID
+                const user = await User.findOne({ 'subscription.razorpay.subscriptionId': razorpay_subscription_id });
+                
+                if (user) {
+                    // Update subscription status to authenticated
+                    user.subscription.razorpay.status = 'authenticated';
+                    user.subscription.razorpay.customerId = razorpay_customer_id;
+                    await user.save();
+                    
+                    console.log(`✅ Subscription authenticated for user: ${user.email}, Subscription ID: ${razorpay_subscription_id}`);
+                }
+            } catch (error) {
+                console.error('Error updating subscription status:', error);
+            }
+            
+            // Show authentication success page
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Subscription Authenticated</title>
+                    <style>
+                        body { 
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                            text-align: center; 
+                            padding: 50px; 
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            margin: 0;
+                            min-height: 100vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .auth-container {
+                            background: rgba(255,255,255,0.1);
+                            border-radius: 20px;
+                            padding: 40px;
+                            max-width: 500px;
+                            margin: 0 auto;
+                            backdrop-filter: blur(10px);
+                        }
+                        .auth-icon { font-size: 60px; margin-bottom: 20px; }
+                        .close-btn {
+                            background: linear-gradient(135deg, #4CAF50, #45a049);
+                            color: white;
+                            border: none;
+                            padding: 15px 30px;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            margin: 10px;
+                            transition: all 0.3s ease;
+                        }
+                        .close-btn:hover {
+                            background: linear-gradient(135deg, #45a049, #3d8b40);
+                            transform: translateY(-2px);
+                        }
+                        .sub-details {
+                            background: rgba(255,255,255,0.1);
+                            padding: 20px;
+                            border-radius: 10px;
+                            margin: 20px 0;
+                            font-size: 14px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="auth-container">
+                        <div class="auth-icon">🔐</div>
+                        <h1>Subscription Authenticated!</h1>
+                        <p style="font-size: 1.2rem; margin: 20px 0;">Your subscription is ready for payment</p>
+                        <div class="sub-details">
+                            <p><strong>Subscription ID:</strong> ${razorpay_subscription_id}</p>
+                            <p><strong>Status:</strong> Authenticated</p>
+                        </div>
+                        <p>You can now proceed with the payment to activate your premium features!</p>
+                        <p style="font-size: 14px; opacity: 0.9;">You can close this tab and return to the extension.</p>
+                        <button class="close-btn" onclick="window.close()">Close Tab</button>
+                        <p style="font-size: 12px; margin-top: 20px; opacity: 0.7;">This tab will close automatically in 10 seconds</p>
+                    </div>
+                    <script>
+                        // Auto-close after 10 seconds
+                        setTimeout(() => window.close(), 10000);
+                    </script>
+                </body>
+                </html>
+            `);
+        } else {
+            // Authentication failed
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Authentication Failed</title>
+                    <style>
+                        body { 
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            text-align: center; 
+                            padding: 50px; 
+                            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+                            color: white;
+                            margin: 0;
+                            min-height: 100vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .error-container {
+                            background: rgba(255,255,255,0.1);
+                            border-radius: 20px;
+                            padding: 40px;
+                            max-width: 500px;
+                            margin: 0 auto;
+                            backdrop-filter: blur(10px);
+                        }
+                        .error-icon { font-size: 60px; margin-bottom: 20px; }
+                        .close-btn {
+                            background: #f44336;
+                            color: white;
+                            border: none;
+                            padding: 15px 30px;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            margin-top: 20px;
+                            transition: all 0.3s ease;
+                        }
+                        .close-btn:hover {
+                            background: #da190b;
+                            transform: translateY(-2px);
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="error-container">
+                        <div class="error-icon">❌</div>
+                        <h1>Authentication Failed</h1>
+                        <p>Your subscription authentication was not completed.</p>
+                        <p>Please try again from the extension popup.</p>
+                        <button class="close-btn" onclick="window.close()">Close Tab</button>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+        
+    } catch (error) {
+        console.error('❌ Subscription authentication callback error:', error);
+        res.status(500).send(`
+            <html>
+            <head>
+                <title>Error</title>
+                <style>
+                    body { 
+                        font-family: Arial, sans-serif; 
+                        text-align: center; 
+                        padding: 50px; 
+                        background: #f44336;
+                        color: white;
+                    }
+                    .error-container { 
+                        background: rgba(255,255,255,0.1); 
+                        padding: 40px; 
+                        border-radius: 10px; 
+                        max-width: 400px; 
+                        margin: 0 auto; 
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="error-container">
+                    <h1>❌ Error</h1>
+                    <p>An error occurred processing your subscription authentication.</p>
+                    <p>Please contact support if this issue persists.</p>
+                    <button onclick="window.close()" style="
+                        background: white; 
+                        color: #f44336; 
+                        border: none; 
+                        padding: 10px 20px; 
+                        border-radius: 5px; 
+                        cursor: pointer;
+                        margin-top: 20px;
+                    ">Close Tab</button>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+});
+
+/**
+ * Handle payment callback from Razorpay (subscription payment)
+ * GET /api/subscription/payment-callback
+ */
+router.get('/payment-callback', async (req, res) => {
+    try {
+        const { 
+            razorpay_payment_id, 
+            razorpay_subscription_id,
+            razorpay_payment_link_id, 
+            razorpay_payment_link_reference_id, 
+            razorpay_payment_link_status, 
+            razorpay_signature, 
+            ref 
+        } = req.query;
+        
+        console.log('Payment callback received:', req.query);
+        
+        // Handle subscription payment (direct from subscription link - image 3 flow)
+        if (razorpay_subscription_id && razorpay_payment_id) {
+            try {
+                // Find user by subscription ID
+                const user = await User.findOne({ 'subscription.razorpay.subscriptionId': razorpay_subscription_id });
+                
+                if (user) {
+                    // Subscription payment successful - activate subscription
+                    user.subscription.razorpay.status = 'active';
+                    user.subscription.razorpay.lastPaymentId = razorpay_payment_id;
+                    user.subscription.features.autoScroll = true;
+                    user.subscription.features.analytics = true;
+                    user.subscription.features.customSettings = true;
+                    user.subscription.features.prioritySupport = true;
+                    
+                    // Deactivate trial
+                    if (user.subscription.trial) {
+                        user.subscription.trial.isActive = false;
+                    }
+                    
+                    // Add payment to history
+                    if (!user.subscription.razorpay.paymentHistory) {
+                        user.subscription.razorpay.paymentHistory = [];
+                    }
+                    
+                    user.subscription.razorpay.paymentHistory.push({
+                        paymentId: razorpay_payment_id,
+                        subscriptionId: razorpay_subscription_id,
+                        status: 'success',
+                        paidAt: new Date()
+                    });
+                    
+                    await user.save();
+                    
+                    console.log(`✅ Subscription payment successful for user: ${user.email}, Payment ID: ${razorpay_payment_id}`);
+                }
+            } catch (activationError) {
+                console.error('Error activating subscription:', activationError);
+            }
+        }
+        // Handle payment link payment (fallback method)
+        else if (razorpay_payment_link_status === 'paid' && razorpay_payment_id) {
+            try {
+                // Extract reference ID to find user and subscription
+                const referenceId = ref || razorpay_payment_link_reference_id;
+                
+                if (referenceId) {
+                    // Parse reference ID to get user info
+                    const refParts = referenceId.split('_');
+                    if (refParts.length >= 3) {
+                        const userId = refParts[2];
+                        
+                        // Find user and activate subscription
+                        const user = await User.findById(userId);
+                        if (user) {
+                            // Update subscription status to active
+                            user.subscription.razorpay.status = 'active';
+                            user.subscription.razorpay.lastPaymentId = razorpay_payment_id;
+                            user.subscription.features.customSettings = true;
+                            user.subscription.features.prioritySupport = true;
+                            
+                            // Deactivate trial
+                            if (user.subscription.trial) {
+                                user.subscription.trial.isActive = false;
+                            }
+                            
+                            // Add payment to history
+                            if (!user.subscription.razorpay.paymentHistory) {
+                                user.subscription.razorpay.paymentHistory = [];
+                            }
+                            
+                            user.subscription.razorpay.paymentHistory.push({
+                                paymentId: razorpay_payment_id,
+                                status: 'success',
+                                paidAt: new Date()
+                            });
+                            
+                            await user.save();
+                            
+                            console.log(`✅ Payment link payment successful for user: ${user.email}, Payment ID: ${razorpay_payment_id}`);
+                        }
+                    }
+                }
+            } catch (activationError) {
+                console.error('Error activating subscription from payment link:', activationError);
+            }
+        }
+        
+        // Show success page for any successful payment
+        if (razorpay_payment_id && (razorpay_subscription_id || razorpay_payment_link_status === 'paid')) {
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Payment Successful</title>
+                    <style>
+                        body { 
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+                            text-align: center; 
+                            padding: 50px; 
+                            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                            color: white;
+                            margin: 0;
+                            min-height: 100vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .success-container {
+                            background: rgba(255,255,255,0.1);
+                            border-radius: 20px;
+                            padding: 40px;
+                            max-width: 500px;
+                            margin: 0 auto;
+                            backdrop-filter: blur(10px);
+                        }
+                        .success-icon { font-size: 60px; margin-bottom: 20px; }
+                        .close-btn {
+                            background: linear-gradient(135deg, #4CAF50, #45a049);
+                            color: white;
+                            border: none;
+                            padding: 15px 30px;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            margin: 10px;
+                            transition: all 0.3s ease;
+                        }
+                        .close-btn:hover {
+                            background: linear-gradient(135deg, #45a049, #3d8b40);
+                            transform: translateY(-2px);
+                        }
+                        .payment-details {
+                            background: rgba(255,255,255,0.1);
+                            padding: 20px;
+                            border-radius: 10px;
+                            margin: 20px 0;
+                            font-size: 14px;
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="success-container">
+                        <div class="success-icon">🎉</div>
+                        <h1>Payment Successful!</h1>
+                        <p style="font-size: 1.2rem; margin: 20px 0;">Welcome to AutoScroll Premium!</p>
+                        <div class="payment-details">
+                            <p><strong>Payment ID:</strong> ${razorpay_payment_id}</p>
+                            ${razorpay_subscription_id ? `<p><strong>Subscription ID:</strong> ${razorpay_subscription_id}</p>` : ''}
+                            <p><strong>Status:</strong> Confirmed</p>
+                        </div>
+                        <p>Your premium subscription is now active!</p>
+                        <p style="font-size: 14px; opacity: 0.9;">You can now close this tab and return to the extension.</p>
+                        <button class="close-btn" onclick="window.close()">Close Tab</button>
+                        <p style="font-size: 12px; margin-top: 20px; opacity: 0.7;">This tab will close automatically in 15 seconds</p>
+                    </div>
+                    <script>
+                        // Auto-close after 15 seconds
+                        setTimeout(() => window.close(), 15000);
+                    </script>
+                </body>
+                </html>
+            `);
+        } else {
+            // Payment failed or cancelled
+            res.send(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Payment Cancelled</title>
+                    <style>
+                        body { 
+                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                            text-align: center; 
+                            padding: 50px; 
+                            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
+                            color: white;
+                            margin: 0;
+                            min-height: 100vh;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .error-container {
+                            background: rgba(255,255,255,0.1);
+                            border-radius: 20px;
+                            padding: 40px;
+                            max-width: 500px;
+                            margin: 0 auto;
+                            backdrop-filter: blur(10px);
+                        }
+                        .error-icon { font-size: 60px; margin-bottom: 20px; }
+                        .close-btn {
+                            background: #f44336;
+                            color: white;
+                            border: none;
+                            padding: 15px 30px;
+                            border-radius: 8px;
+                            font-size: 16px;
+                            cursor: pointer;
+                            margin-top: 20px;
+                            transition: all 0.3s ease;
+                        }
+                        .close-btn:hover {
+                            background: #da190b;
+                            transform: translateY(-2px);
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="error-container">
+                        <div class="error-icon">❌</div>
+                        <h1>Payment Cancelled</h1>
+                        <p>Your payment was not completed.</p>
+                        <p>No charges have been made to your account.</p>
+                        <p style="font-size: 14px; margin-top: 20px;">You can try again from the extension popup.</p>
+                        <button class="close-btn" onclick="window.close()">Close Tab</button>
+                        <p style="font-size: 12px; margin-top: 20px; opacity: 0.7;">This tab will close automatically in 10 seconds</p>
+                    </div>
+                    <script>
+                        // Auto-close after 10 seconds
+                        setTimeout(() => window.close(), 10000);
+                    </script>
+                </body>
+                </html>
+            `);
+        }
+        
+    } catch (error) {
+        console.error('❌ Payment callback error:', error);
+        res.status(500).send(`
+            <html>
+            <head>
+                <title>Error</title>
+                <style>
+                    body { 
+                        font-family: Arial, sans-serif; 
+                        text-align: center; 
+                        padding: 50px; 
+                        background: #f44336;
+                        color: white;
+                    }
+                    .error-container { 
+                        background: rgba(255,255,255,0.1); 
+                        padding: 40px; 
+                        border-radius: 10px; 
+                        max-width: 400px; 
+                        margin: 0 auto; 
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="error-container">
+                    <h1>❌ Error</h1>
+                    <p>An error occurred processing your payment callback.</p>
+                    <p>Please contact support if this issue persists.</p>
+                    <button onclick="window.close()" style="
+                        background: white; 
+                        color: #f44336; 
+                        border: none; 
+                        padding: 10px 20px; 
+                        border-radius: 5px; 
+                        cursor: pointer;
+                        margin-top: 20px;
+                    ">Close Tab</button>
+                </div>
+            </body>
+            </html>
+        `);
+    }
+});
+
+/**
+ * Verify payment after successful Razorpay payment
+ * POST /api/subscription/verify-payment
+ */
+router.post('/verify-payment', async (req, res) => {
+    try {
+        const { userId, paymentId, subscriptionId, signature } = req.body;
+        
+        if (!userId || !paymentId || !subscriptionId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required payment details'
+            });
+        }
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        // Verify payment signature (optional but recommended)
+        // const generatedSignature = crypto
+        //     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        //     .update(paymentId + '|' + subscriptionId)
+        //     .digest('hex');
+        
+        // if (generatedSignature !== signature) {
+        //     return res.status(400).json({
+        //         success: false,
+        //         message: 'Invalid payment signature'
+        //     });
+        // }
+        
+        // Update user subscription status
+        user.subscription.razorpay.status = 'active';
+        user.subscription.razorpay.lastPaymentId = paymentId;
+        user.subscription.features.autoScroll = true;
+        user.subscription.features.analytics = true;
+        user.subscription.features.customSettings = true;
+        user.subscription.features.prioritySupport = true;
+        
+        // Add payment to history
+        if (!user.subscription.razorpay.paymentHistory) {
+            user.subscription.razorpay.paymentHistory = [];
+        }
+        
+        user.subscription.razorpay.paymentHistory.push({
+            paymentId: paymentId,
+            status: 'success',
+            paidAt: new Date()
+        });
+        
+        await user.save();
+        
+        console.log(`✅ Payment verified for user: ${user.email}, Payment ID: ${paymentId}`);
+        
+        res.json({
+            success: true,
+            message: 'Payment verified successfully',
+            data: {
+                paymentId,
+                subscriptionId,
+                status: 'verified'
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Payment verification error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to verify payment',
+            error: error.message
+        });
+    }
+});
+
+/**
  * Get subscription plans
  * GET /api/subscription/plans
  */

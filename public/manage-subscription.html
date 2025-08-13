@@ -393,8 +393,33 @@
         }
         
         async function upgradeSubscription() {
-            // Redirect to subscription page
-            window.location.href = `/subscribe?userId=${currentUserId}`;
+            // Instead of redirecting to subscribe.html, create a secure payment link
+            try {
+                const response = await fetch('/api/subscription/create-payment-link', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId: currentUserId,
+                        planType: 'monthly', // Default to monthly, could be made selectable
+                        returnUrl: window.location.href,
+                        cancelUrl: window.location.href
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Open secure payment link
+                    window.open(result.data.paymentLink, '_blank');
+                    showMessage('A secure payment window has opened. Complete your payment there.', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                showMessage('Failed to create payment link: ' + error.message, 'error');
+            }
         }
         
         async function cancelSubscription() {
