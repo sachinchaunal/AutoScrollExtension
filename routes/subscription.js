@@ -982,4 +982,148 @@ router.post('/trigger-charge', async (req, res) => {
     }
 });
 
+/**
+ * ADMIN: Manually activate subscription (simulate successful webhook)
+ * POST /api/subscription/admin/activate
+ */
+router.post('/admin/activate', async (req, res) => {
+    try {
+        const { userId, subscriptionId } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'userId is required'
+            });
+        }
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        const subId = subscriptionId || user.subscription?.razorpay?.subscriptionId;
+        if (!subId) {
+            return res.status(400).json({
+                success: false,
+                message: 'No subscription found for user'
+            });
+        }
+        
+        // Create mock subscription object for webhook simulation
+        const mockSubscription = {
+            id: subId,
+            entity: 'subscription',
+            plan_id: user.subscription.razorpay.planId,
+            status: 'active',
+            current_start: Math.floor(Date.now() / 1000),
+            current_end: Math.floor((Date.now() + (30 * 24 * 60 * 60 * 1000)) / 1000), // 30 days from now
+            charge_at: Math.floor((Date.now() + (30 * 24 * 60 * 60 * 1000)) / 1000),
+            created_at: Math.floor((Date.now() - (10 * 60 * 1000)) / 1000) // 10 minutes ago
+        };
+        
+        // Call the webhook handler directly to simulate successful payment
+        const result = await SubscriptionService.handleSubscriptionActivated(mockSubscription);
+        
+        console.log(`🔧 ADMIN: Manually activated subscription for ${user.email}: ${subId}`);
+        
+        res.json({
+            success: true,
+            message: 'Subscription manually activated',
+            data: {
+                userId: user._id,
+                subscriptionId: subId,
+                status: 'active',
+                result
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Admin activate error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to activate subscription',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * ADMIN: Manually update subscription status (for testing webhook failures)
+ * POST /api/subscription/admin/update-status
+ */
+router.post('/admin/update-status', async (req, res) => {
+    try {
+        const { userId, subscriptionId, status } = req.body;
+        
+        if (!userId || !status) {
+            return res.status(400).json({
+                success: false,
+                message: 'userId and status are required'
+            });
+        }
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        if (!user.subscription?.razorpay?.subscriptionId) {
+            return res.status(400).json({
+                success: false,
+                message: 'No subscription found for user'
+            });
+        }
+        
+        // Update subscription status
+        const oldStatus = user.subscription.razorpay.status;
+        user.subscription.razorpay.status = status;
+        
+        // If activating subscription, enable all features
+        if (status === 'active') {
+            user.subscription.features.autoScroll = true;
+            user.subscription.features.analytics = true;
+            user.subscription.features.customSettings = true;
+            user.subscription.features.prioritySupport = true;
+            
+            // Update billing period if provided
+            if (subscriptionId) {
+                const now = new Date();
+                user.subscription.razorpay.currentPeriodStart = now;
+                user.subscription.razorpay.currentPeriodEnd = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)); // 30 days
+            }
+        }
+        
+        await user.save();
+        
+        console.log(`🔧 ADMIN: Updated subscription status for ${user.email}: ${oldStatus} → ${status}`);
+        
+        res.json({
+            success: true,
+            message: `Subscription status updated from ${oldStatus} to ${status}`,
+            data: {
+                userId: user._id,
+                subscriptionId: user.subscription.razorpay.subscriptionId,
+                oldStatus,
+                newStatus: status,
+                features: user.subscription.features
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Admin update status error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update subscription status',
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;
