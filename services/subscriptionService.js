@@ -9,7 +9,9 @@ const {
     fetchSubscription,
     calculateTrialEndDate,
     calculateDaysRemaining,
-    checkUserAccess
+    checkUserAccess,
+    fetchPendingInvoices,
+    chargeInvoice
 } = require('../config/razorpay');
 const { 
     SubscriptionError, 
@@ -111,17 +113,14 @@ class SubscriptionService {
                 );
             }
             
-            // Calculate subscription start time (add 2 minutes buffer to ensure it's in the future)
-            const now = new Date();
-            const startTime = new Date(now.getTime() + (2 * 60 * 1000)); // Add 2 minutes
-            const startAt = Math.floor(startTime.getTime() / 1000); // Future time in Unix timestamp
-            
+            // For immediate start subscriptions, don't set start_at
+            // This ensures the subscription starts with the first payment (immediate billing)
             const subscriptionData = {
                 plan_id: plan.id,
                 customer_notify: 1, // Send notification to customer
                 quantity: 1,
                 total_count: planType === 'yearly' ? 1 : 12, // 1 billing cycle for yearly, 12 for monthly
-                start_at: startAt,
+                // No start_at parameter for immediate start
                 addons: [],
                 notes: {
                     user_id: user._id.toString(),
@@ -359,6 +358,9 @@ class SubscriptionService {
             console.log(`📧 Processing webhook: ${event.event} for ${event.payload.subscription?.entity?.id || 'unknown'}`);
             
             switch (event.event) {
+                case 'subscription.authenticated':
+                    return await this.handleSubscriptionAuthenticated(event.payload.subscription.entity);
+                    
                 case 'subscription.activated':
                     return await this.handleSubscriptionActivated(event.payload.subscription.entity);
                     
@@ -393,6 +395,56 @@ class SubscriptionService {
         }
     }
     
+    /**
+     * Handle subscription authenticated webhook
+     * This is called when customer completes authentication transaction
+     * For immediate start subscriptions, this means the subscription is ready for charging
+     */
+    static async handleSubscriptionAuthenticated(subscription) {
+        try {
+            const user = await User.findOne({ 'subscription.razorpay.subscriptionId': subscription.id });
+            
+            if (!user) {
+                console.warn(`⚠️ User not found for subscription: ${subscription.id}`);
+                return { success: false, message: 'User not found' };
+            }
+            
+            // Update subscription status to authenticated
+            user.subscription.razorpay.status = SUBSCRIPTION_STATUS.AUTHENTICATED;
+            user.subscription.razorpay.currentPeriodStart = new Date(subscription.current_start * 1000);
+            user.subscription.razorpay.currentPeriodEnd = new Date(subscription.current_end * 1000);
+            
+            await user.save();
+            
+            console.log(`🔐 Subscription authenticated for user: ${user.email}, ID: ${subscription.id}`);
+            console.log(`📅 Billing period: ${new Date(subscription.current_start * 1000)} to ${new Date(subscription.current_end * 1000)}`);
+            
+            // For immediate start subscriptions, fetch and process any pending invoices
+            try {
+                const pendingInvoices = await fetchPendingInvoices(subscription.id);
+                
+                if (pendingInvoices.length > 0) {
+                    console.log(`� Processing ${pendingInvoices.length} pending invoices for subscription: ${subscription.id}`);
+                    
+                    for (const invoice of pendingInvoices) {
+                        if (invoice.status === 'issued') {
+                            console.log(`� Triggering payment for invoice: ${invoice.id}`);
+                            await chargeInvoice(invoice.id);
+                        }
+                    }
+                }
+            } catch (invoiceError) {
+                console.warn(`⚠️ Could not process pending invoices for subscription: ${subscription.id}`, invoiceError.message);
+                // Don't fail the entire webhook for invoice processing issues
+            }
+            return { success: true, message: 'Subscription authenticated' };
+            
+        } catch (error) {
+            console.error('❌ Failed to handle subscription authentication:', error);
+            throw error;
+        }
+    }
+
     /**
      * Handle subscription activated webhook
      */
@@ -496,6 +548,74 @@ class SubscriptionService {
         }
     }
     
+    /**
+     * Manually trigger subscription charge for authenticated subscriptions
+     */
+    static async triggerSubscriptionCharge(subscriptionId) {
+        try {
+            console.log(`🔄 Triggering charge for subscription: ${subscriptionId}`);
+            
+            // Fetch subscription details from Razorpay
+            const subscription = await fetchSubscription(subscriptionId);
+            
+            if (subscription.status !== 'authenticated') {
+                throw new SubscriptionError(
+                    `Subscription is in ${subscription.status} state, expected authenticated`,
+                    'INVALID_SUBSCRIPTION_STATE',
+                    400
+                );
+            }
+            
+            // Fetch and process pending invoices
+            const pendingInvoices = await fetchPendingInvoices(subscriptionId);
+            
+            if (pendingInvoices.length === 0) {
+                return {
+                    success: true,
+                    message: 'No pending invoices found',
+                    invoicesProcessed: 0
+                };
+            }
+            
+            let processedCount = 0;
+            const processedInvoices = [];
+            
+            for (const invoice of pendingInvoices) {
+                try {
+                    if (invoice.status === 'issued') {
+                        const processedInvoice = await chargeInvoice(invoice.id);
+                        processedInvoices.push({
+                            id: invoice.id,
+                            amount: invoice.amount,
+                            status: processedInvoice.status
+                        });
+                        processedCount++;
+                        console.log(`✅ Processed invoice: ${invoice.id}, Amount: ${invoice.amount/100}`);
+                    }
+                } catch (invoiceError) {
+                    console.error(`❌ Failed to process invoice ${invoice.id}:`, invoiceError.message);
+                    processedInvoices.push({
+                        id: invoice.id,
+                        amount: invoice.amount,
+                        error: invoiceError.message
+                    });
+                }
+            }
+            
+            return {
+                success: true,
+                message: `Processed ${processedCount} out of ${pendingInvoices.length} invoices`,
+                invoicesProcessed: processedCount,
+                totalInvoices: pendingInvoices.length,
+                invoices: processedInvoices
+            };
+            
+        } catch (error) {
+            console.error('❌ Failed to trigger subscription charge:', error);
+            throw error;
+        }
+    }
+
     /**
      * Handle subscription completed webhook
      */
@@ -623,6 +743,87 @@ class SubscriptionService {
                 reliable: false,
                 error: error.message
             };
+        }
+    }
+    
+    /**
+     * Trigger manual charge for authenticated subscription
+     * @param {string} subscriptionId - Razorpay subscription ID
+     * @param {string} userId - User ID (alternative to subscriptionId)
+     * @returns {Promise<Object>} - Charge result
+     */
+    static async triggerSubscriptionCharge(subscriptionId, userId) {
+        try {
+            let user;
+            let subId = subscriptionId;
+            
+            // If userId provided, get subscription ID from user
+            if (userId) {
+                user = await User.findById(userId);
+                if (!user) {
+                    throw new SubscriptionError('User not found', 'USER_NOT_FOUND', 404);
+                }
+                subId = user.subscription?.razorpay?.subscriptionId;
+                if (!subId) {
+                    throw new SubscriptionError('No subscription found for user', 'SUBSCRIPTION_NOT_FOUND', 404);
+                }
+            }
+            
+            if (!subId) {
+                throw new SubscriptionError('Subscription ID is required', 'SUBSCRIPTION_ID_REQUIRED', 400);
+            }
+            
+            // Fetch current subscription status
+            const subscription = await fetchSubscription(subId);
+            
+            if (subscription.status !== 'authenticated') {
+                throw new SubscriptionError(
+                    `Cannot trigger charge for subscription in ${subscription.status} status. Expected: authenticated`,
+                    'INVALID_SUBSCRIPTION_STATUS',
+                    400
+                );
+            }
+            
+            // Fetch pending invoices for this subscription
+            const pendingInvoices = await fetchPendingInvoices(subId);
+            
+            if (pendingInvoices.length === 0) {
+                return {
+                    success: true,
+                    message: 'No pending invoices found',
+                    subscriptionId: subId,
+                    status: subscription.status
+                };
+            }
+            
+            // Charge the first pending invoice
+            const firstInvoice = pendingInvoices[0];
+            console.log(`💳 Attempting to charge invoice: ${firstInvoice.id} for subscription: ${subId}`);
+            
+            const chargeResult = await chargeInvoice(firstInvoice.id);
+            
+            // Update user subscription status if user found
+            if (user) {
+                // This will be updated by webhook, but we can update optimistically
+                user.subscription.razorpay.lastChargeAttempt = new Date();
+                await user.save();
+            }
+            
+            console.log(`✅ Invoice charge triggered: ${firstInvoice.id}, Status: ${chargeResult.status}`);
+            
+            return {
+                success: true,
+                message: 'Subscription charge triggered successfully',
+                subscriptionId: subId,
+                invoiceId: firstInvoice.id,
+                chargeStatus: chargeResult.status,
+                amount: firstInvoice.amount,
+                currency: firstInvoice.currency
+            };
+            
+        } catch (error) {
+            console.error('❌ Failed to trigger subscription charge:', error);
+            throw error;
         }
     }
 }

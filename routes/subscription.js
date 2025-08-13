@@ -39,110 +39,6 @@ router.get('/status/:userId', async (req, res) => {
 });
 
 /**
- * Initialize free trial for user
- * POST /api/subscription/trial/start
- */
-router.post('/trial/start', async (req, res) => {
-    try {
-        const { userId } = req.body;
-        
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'User ID is required'
-            });
-        }
-        
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        // Check if trial already used
-        if (user.subscription && user.subscription.trial && 
-            (!user.subscription.trial.isActive && new Date() > user.subscription.trial.endDate)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Free trial has already been used'
-            });
-        }
-        
-        const trialResult = await SubscriptionService.initializeTrial(user);
-        
-        res.json({
-            success: true,
-            message: 'Free trial started successfully',
-            data: trialResult
-        });
-        
-    } catch (error) {
-        console.error('❌ Start trial error:', error);
-        const errorResponse = formatErrorResponse(error);
-        res.status(errorResponse.error.statusCode).json(errorResponse);
-    }
-});
-
-/**
- * Create subscription for user
- * POST /api/subscription/create
- */
-router.post('/create', async (req, res) => {
-    try {
-        const { userId, planType = 'monthly' } = req.body;
-        
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'User ID is required'
-            });
-        }
-        
-        if (!['monthly', 'yearly'].includes(planType)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid plan type. Must be "monthly" or "yearly"'
-            });
-        }
-        
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        // Check if user already has an active subscription
-        const currentStatus = SubscriptionService.getUserSubscriptionStatus(user);
-        if (currentStatus.subscriptionStatus === 'active') {
-            return res.status(400).json({
-                success: false,
-                message: 'User already has an active subscription'
-            });
-        }
-        
-        const subscriptionResult = await SubscriptionService.createUserSubscription(user, planType);
-        
-        res.json({
-            success: true,
-            message: 'Subscription created successfully',
-            data: subscriptionResult
-        });
-        
-    } catch (error) {
-        console.error('❌ Create subscription error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create subscription',
-            error: error.message
-        });
-    }
-});
-
-/**
  * Cancel user subscription
  * POST /api/subscription/cancel
  */
@@ -302,77 +198,6 @@ router.post('/create-subscription', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to create subscription',
-            error: error.message
-        });
-    }
-});
-
-/**
- * Create secure payment link for subscription (fallback method)
- * POST /api/subscription/create-payment-link
- */
-router.post('/create-payment-link', async (req, res) => {
-    try {
-        const { userId, planType = 'monthly', returnUrl, cancelUrl } = req.body;
-        
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'User ID is required'
-            });
-        }
-        
-        if (!['monthly', 'yearly'].includes(planType)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid plan type. Must be "monthly" or "yearly"'
-            });
-        }
-        
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        // Check if user already has an active subscription
-        const currentStatus = SubscriptionService.getUserSubscriptionStatus(user);
-        if (currentStatus.subscriptionStatus === 'active') {
-            return res.status(400).json({
-                success: false,
-                message: 'User already has an active subscription'
-            });
-        }
-        
-        // Create subscription in Razorpay first (proper workflow)
-        const subscriptionResult = await SubscriptionService.createUserSubscription(user, planType);
-        
-        if (!subscriptionResult.success) {
-            throw new Error('Failed to create subscription');
-        }
-        
-        // Return the subscription link directly (from image 2 workflow)
-        console.log(`✅ Subscription created for user: ${user.email}, Plan: ${planType}`);
-        
-        res.json({
-            success: true,
-            message: 'Subscription link created successfully',
-            data: {
-                subscriptionLink: subscriptionResult.subscription.shortUrl, // Direct Razorpay subscription link
-                subscriptionId: subscriptionResult.subscription.id,
-                planType: planType,
-                amount: subscriptionResult.subscription.amount,
-                currency: subscriptionResult.subscription.currency
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Create payment link error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to create payment link',
             error: error.message
         });
     }
@@ -871,84 +696,7 @@ router.get('/payment-callback', async (req, res) => {
     }
 });
 
-/**
- * Verify payment after successful Razorpay payment
- * POST /api/subscription/verify-payment
- */
-router.post('/verify-payment', async (req, res) => {
-    try {
-        const { userId, paymentId, subscriptionId, signature } = req.body;
-        
-        if (!userId || !paymentId || !subscriptionId) {
-            return res.status(400).json({
-                success: false,
-                message: 'Missing required payment details'
-            });
-        }
-        
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-        
-        // Verify payment signature (optional but recommended)
-        // const generatedSignature = crypto
-        //     .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-        //     .update(paymentId + '|' + subscriptionId)
-        //     .digest('hex');
-        
-        // if (generatedSignature !== signature) {
-        //     return res.status(400).json({
-        //         success: false,
-        //         message: 'Invalid payment signature'
-        //     });
-        // }
-        
-        // Update user subscription status
-        user.subscription.razorpay.status = 'active';
-        user.subscription.razorpay.lastPaymentId = paymentId;
-        user.subscription.features.autoScroll = true;
-        user.subscription.features.analytics = true;
-        user.subscription.features.customSettings = true;
-        user.subscription.features.prioritySupport = true;
-        
-        // Add payment to history
-        if (!user.subscription.razorpay.paymentHistory) {
-            user.subscription.razorpay.paymentHistory = [];
-        }
-        
-        user.subscription.razorpay.paymentHistory.push({
-            paymentId: paymentId,
-            status: 'success',
-            paidAt: new Date()
-        });
-        
-        await user.save();
-        
-        console.log(`✅ Payment verified for user: ${user.email}, Payment ID: ${paymentId}`);
-        
-        res.json({
-            success: true,
-            message: 'Payment verified successfully',
-            data: {
-                paymentId,
-                subscriptionId,
-                status: 'verified'
-            }
-        });
-        
-    } catch (error) {
-        console.error('❌ Payment verification error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to verify payment',
-            error: error.message
-        });
-    }
-});
+
 
 /**
  * Get subscription plans
@@ -1151,6 +899,86 @@ router.get('/analytics/:userId', async (req, res) => {
             message: 'Failed to get analytics',
             error: error.message
         });
+    }
+});
+
+/**
+ * Manually trigger invoice processing for authenticated subscription
+ * POST /api/subscription/trigger-charge/:subscriptionId
+ */
+router.post('/trigger-charge/:subscriptionId', async (req, res) => {
+    try {
+        const { subscriptionId } = req.params;
+        
+        if (!subscriptionId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Subscription ID is required'
+            });
+        }
+        
+        // Find user with this subscription
+        const user = await User.findOne({ 'subscription.razorpay.subscriptionId': subscriptionId });
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found for this subscription'
+            });
+        }
+        
+        // Check if subscription is in authenticated state
+        if (user.subscription.razorpay.status !== 'authenticated') {
+            return res.status(400).json({
+                success: false,
+                message: `Subscription is in ${user.subscription.razorpay.status} state, not authenticated`
+            });
+        }
+        
+        const result = await SubscriptionService.triggerSubscriptionCharge(subscriptionId);
+        
+        res.json({
+            success: true,
+            message: 'Charge trigger initiated',
+            data: result
+        });
+        
+    } catch (error) {
+        console.error('❌ Trigger charge error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to trigger charge',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * Trigger manual charge for authenticated subscription
+ * POST /api/subscription/trigger-charge
+ */
+router.post('/trigger-charge', async (req, res) => {
+    try {
+        const { subscriptionId, userId } = req.body;
+        
+        if (!subscriptionId && !userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Either subscriptionId or userId is required'
+            });
+        }
+        
+        const result = await SubscriptionService.triggerSubscriptionCharge(subscriptionId, userId);
+        
+        res.json({
+            success: true,
+            message: 'Subscription charge triggered successfully',
+            data: result
+        });
+        
+    } catch (error) {
+        console.error('❌ Trigger charge error:', error);
+        const errorResponse = formatErrorResponse(error);
+        res.status(errorResponse.error.statusCode).json(errorResponse);
     }
 });
 

@@ -123,12 +123,12 @@ async function createPlan(planDetails) {
  */
 async function createSubscription(subscriptionData) {
     try {
-        const subscription = await razorpay.subscriptions.create({
+        // Prepare subscription payload
+        const payload = {
             plan_id: subscriptionData.plan_id,
             customer_notify: subscriptionData.customer_notify || 1,
             quantity: subscriptionData.quantity || 1,
             total_count: subscriptionData.total_count || 12, // 12 months for annual by default
-            start_at: subscriptionData.start_at,
             addons: subscriptionData.addons || [],
             notes: {
                 user_id: subscriptionData.user_id,
@@ -142,10 +142,24 @@ async function createSubscription(subscriptionData) {
                 notify_phone: subscriptionData.notify_phone,
                 notify_email: subscriptionData.notify_email || subscriptionData.email
             }
-        });
+        };
+        
+        // Only add start_at if explicitly provided (for immediate start, omit this)
+        if (subscriptionData.start_at) {
+            payload.start_at = subscriptionData.start_at;
+        }
+        
+        // For no expiry, don't set expire_by (Razorpay default is no expiry for subscription links)
+        // Only set expire_by if explicitly provided
+        if (subscriptionData.expire_by) {
+            payload.expire_by = subscriptionData.expire_by;
+        }
+        
+        const subscription = await razorpay.subscriptions.create(payload);
         
         console.log('✅ Razorpay subscription created:', subscription.id);
         console.log('📧 Subscription link available:', subscription.short_url);
+        console.log('🔧 Subscription settings - Immediate start:', !subscriptionData.start_at, ', No expiry:', !subscriptionData.expire_by);
         
         return subscription;
     } catch (error) {
@@ -284,6 +298,46 @@ async function initializePlans() {
     }
 }
 
+/**
+ * Fetch pending invoices for a subscription
+ */
+async function fetchPendingInvoices(subscriptionId) {
+    try {
+        const invoices = await razorpay.invoices.all({
+            subscription_id: subscriptionId,
+            status: 'issued'
+        });
+        
+        console.log(`📋 Found ${invoices.items.length} pending invoices for subscription: ${subscriptionId}`);
+        return invoices.items;
+    } catch (error) {
+        console.error('❌ Failed to fetch pending invoices:', error);
+        throw error;
+    }
+}
+
+/**
+ * Charge a specific invoice manually
+ */
+async function chargeInvoice(invoiceId) {
+    try {
+        const invoice = await razorpay.invoices.fetch(invoiceId);
+        
+        if (invoice.status === 'issued') {
+            // For subscriptions with immediate start, Razorpay should automatically
+            // attempt charging, but we can also manually issue/send the invoice
+            const updatedInvoice = await razorpay.invoices.issue(invoiceId);
+            console.log(`📤 Invoice ${invoiceId} has been issued for payment`);
+            return updatedInvoice;
+        }
+        
+        return invoice;
+    } catch (error) {
+        console.error('❌ Failed to charge invoice:', error);
+        throw error;
+    }
+}
+
 module.exports = {
     razorpay,
     razorpayConfig,
@@ -298,5 +352,7 @@ module.exports = {
     calculateTrialEndDate,
     calculateDaysRemaining,
     checkUserAccess,
-    initializePlans
+    initializePlans,
+    fetchPendingInvoices,
+    chargeInvoice
 };
