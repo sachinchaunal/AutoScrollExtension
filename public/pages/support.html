@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📱 Support Center - AutoScroll Extension</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-bottom: 30px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+
+        .back-link:hover {
+            color: #764ba2;
+        }
+
+        .support-sections {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .faq-section {
+            grid-column: 1 / -1;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            color: #333;
+            margin-bottom: 25px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .faq-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            border: 1px solid #e9ecef;
+        }
+
+        .faq-question {
+            padding: 20px;
+            background: #667eea;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            transition: background-color 0.3s ease;
+        }
+
+        .faq-question:hover {
+            background: #5a6fd8;
+        }
+
+        .faq-question::after {
+            content: '+';
+            font-size: 1.5rem;
+            margin-left: auto;
+            transition: transform 0.3s ease;
+        }
+
+        .faq-question.active::after {
+            transform: rotate(45deg);
+        }
+
+        .faq-answer {
+            padding: 0 20px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+
+        .faq-answer.active {
+            padding: 20px;
+            max-height: 200px;
+        }
+
+        .support-form {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .submit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+            width: 100%;
+        }
+
+        .submit-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .quick-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .quick-link {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            text-decoration: none;
+            color: #333;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+
+        .quick-link:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-color: #667eea;
+        }
+
+        .quick-link .icon {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+            display: none;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .support-sections {
+                grid-template-columns: 1fr;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 Support Center</h1>
+            <p>Find answers to common questions and get help with AutoScroll Extension</p>
+        </div>
+
+        <div class="content">
+            <a href="/" class="back-link">← Back to Home</a>
+
+            <div class="support-sections">
+                <div class="faq-section">
+                    <h2 class="section-title">❓ Frequently Asked Questions</h2>
+                    
+                    <div class="faq-item">
+                        <div class="faq-question">How do I install AutoScroll Extension?</div>
+                        <div class="faq-answer">
+                            <p>You can install AutoScroll Extension by downloading it from our website and loading it as an unpacked extension in Chrome. Visit our homepage and click on "Download Extension" to get the ZIP file, then follow the installation guide included in the download.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">Why isn't AutoScroll working on YouTube Shorts?</div>
+                        <div class="faq-answer">
+                            <p>Make sure you're signed in to your account, have an active subscription or trial, and that you've clicked "Start AutoScroll" on the extension popup or website interface.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">How do I manage my subscription?</div>
+                        <div class="faq-answer">
+                            <p>You can manage your subscription through the extension popup or our website. Click on "Manage Subscription" to view status, cancel, or update your UPI autopay mandate.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">What payment methods do you accept?</div>
+                        <div class="faq-answer">
+                            <p>We accept UPI payments through Razorpay. You can pay using any UPI app like PhonePe, Google Pay, Paytm, etc. by scanning the QR code or clicking the payment link.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">How much does AutoScroll Extension cost?</div>
+                        <div class="faq-answer">
+                            <p>AutoScroll Extension costs ₹9 per month with automatic UPI renewals. All users get a 10-day free trial to test the extension before subscribing.</p>
+                        </div>
+                    </div>
+
+                    <div class="faq-item">
+                        <div class="faq-question">Can I cancel my subscription anytime?</div>
+                        <div class="faq-answer">
+                            <p>Yes! You can cancel your subscription anytime from the extension popup or website. There are no cancellation fees or long-term commitments.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="quick-links-section">
+                    <h2 class="section-title">🔗 Quick Links</h2>
+                    <div class="quick-links">
+                        <a href="/contact" class="quick-link">
+                            <div class="icon">📧</div>
+                            <h3>Contact Us</h3>
+                            <p>Send us a message</p>
+                        </a>
+                        
+                        <a href="/privacy" class="quick-link">
+                            <div class="icon">🔒</div>
+                            <h3>Privacy Policy</h3>
+                            <p>How we protect your data</p>
+                        </a>
+                        
+                        <a href="/terms" class="quick-link">
+                            <div class="icon">📄</div>
+                            <h3>Terms of Service</h3>
+                            <p>Our terms and conditions</p>
+                        </a>
+                        
+                        <a href="/" class="quick-link">
+                            <div class="icon">🏠</div>
+                            <h3>Homepage</h3>
+                            <p>Back to main site</p>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="support-form-section">
+                    <h2 class="section-title">🆘 Submit Support Request</h2>
+                    <div class="support-form">
+                        <div class="success-message" id="successMessage">
+                            ✅ Your support request has been submitted! We'll respond within 24 hours.
+                        </div>
+                        
+                        <div class="error-message" id="errorMessage">
+                            ❌ There was an error submitting your request. Please try again.
+                        </div>
+
+                        <form id="supportForm">
+                            <div class="form-group">
+                                <label for="name">Name *</label>
+                                <input type="text" id="name" name="name" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="email">Email *</label>
+                                <input type="email" id="email" name="email" required>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="issueType">Issue Type *</label>
+                                <select id="issueType" name="issueType" required>
+                                    <option value="">Select Issue Type</option>
+                                    <option value="installation">Installation Problem</option>
+                                    <option value="functionality">Extension Not Working</option>
+                                    <option value="payment">Payment/Subscription Issue</option>
+                                    <option value="feature">Feature Request</option>
+                                    <option value="bug">Bug Report</option>
+                                    <option value="account">Account Issue</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="description">Issue Description *</label>
+                                <textarea id="description" name="description" rows="4" placeholder="Please describe your issue in detail..." required></textarea>
+                            </div>
+
+                            <button type="submit" class="submit-btn">📤 Submit Support Request</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // FAQ Toggle functionality
+        document.querySelectorAll('.faq-question').forEach(question => {
+            question.addEventListener('click', () => {
+                const answer = question.nextElementSibling;
+                const isActive = question.classList.contains('active');
+                
+                // Close all FAQ items
+                document.querySelectorAll('.faq-question').forEach(q => {
+                    q.classList.remove('active');
+                    q.nextElementSibling.classList.remove('active');
+                });
+                
+                // Open clicked item if it wasn't active
+                if (!isActive) {
+                    question.classList.add('active');
+                    answer.classList.add('active');
+                }
+            });
+        });
+
+        // Support form submission
+        document.getElementById('supportForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.querySelector('.submit-btn');
+            const successMsg = document.getElementById('successMessage');
+            const errorMsg = document.getElementById('errorMessage');
+            
+            // Hide previous messages
+            successMsg.style.display = 'none';
+            errorMsg.style.display = 'none';
+            
+            // Show loading state
+            submitBtn.textContent = '📤 Submitting...';
+            submitBtn.disabled = true;
+            
+            try {
+                const formData = new FormData(this);
+                const response = await fetch('/api/support', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: formData.get('name'),
+                        email: formData.get('email'),
+                        type: formData.get('issueType'),
+                        message: formData.get('description'),
+                        requestType: 'support'
+                    })
+                });
+                
+                if (response.ok) {
+                    successMsg.style.display = 'block';
+                    this.reset();
+                } else {
+                    throw new Error('Failed to submit support request');
+                }
+            } catch (error) {
+                errorMsg.style.display = 'block';
+                console.error('Support form error:', error);
+            } finally {
+                submitBtn.textContent = '📤 Submit Support Request';
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
