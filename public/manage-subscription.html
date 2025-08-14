@@ -89,11 +89,6 @@
             color: #1565C0;
         }
         
-        .status-ending {
-            background: #FFF3E0;
-            color: #F57C00;
-        }
-        
         .status-expired {
             background: #FFEBEE;
             color: #C62828;
@@ -151,27 +146,6 @@
             background: #ccc;
             cursor: not-allowed;
             transform: none;
-        }
-        
-        .cancellation-notice {
-            background: #FFF3E0;
-            border: 2px solid #FF9800;
-            border-radius: 8px;
-            padding: 20px;
-            margin: 20px 0;
-            text-align: center;
-        }
-        
-        .cancellation-notice h4 {
-            color: #F57C00;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-        
-        .cancellation-notice p {
-            color: #BF360C;
-            margin: 0;
-            line-height: 1.5;
         }
         
         .loading {
@@ -323,12 +297,7 @@
                 if (subscriptionStatus.accessType === 'trial') {
                     statusBadge = '<span class="status-badge status-trial">Free Trial</span>';
                 } else {
-                    // Check if subscription is cancelled but still active
-                    if (!subscriptionStatus.canCancel && subscriptionStatus.subscriptionStatus === 'active') {
-                        statusBadge = '<span class="status-badge status-ending">Premium (Ending)</span>';
-                    } else {
-                        statusBadge = '<span class="status-badge status-active">Premium Active</span>';
-                    }
+                    statusBadge = '<span class="status-badge status-active">Premium Active</span>';
                 }
             } else {
                 statusBadge = '<span class="status-badge status-expired">Expired</span>';
@@ -378,14 +347,6 @@
                     <button class="btn btn-danger" onclick="cancelSubscription()">
                         ❌ Cancel Subscription
                     </button>
-                `;
-            } else if (subscriptionStatus.subscriptionStatus === 'active' && !subscriptionStatus.canCancel) {
-                // Show notice for cancelled but active subscription
-                actionButtons += `
-                    <div class="cancellation-notice">
-                        <h4>⚠️ Subscription Cancelled</h4>
-                        <p>Your subscription has been cancelled and will not renew. You can continue using premium features until <strong>${new Date(subscriptionStatus.expiryDate).toLocaleDateString()}</strong>.</p>
-                    </div>
                 `;
             }
             
