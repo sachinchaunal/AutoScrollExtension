@@ -130,7 +130,7 @@ app.use(session({
     cookie: {
         secure: CONFIG.nodeEnv === 'production',
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        maxAge: 10 * 24 * 60 * 60 * 1000 // 10 days
     }
 }));
 

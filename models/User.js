@@ -241,7 +241,7 @@ userSchema.virtual('canUseExtension').get(function() {
 userSchema.methods.generateAuthToken = function() {
     const token = Math.random().toString(36).substr(2, 15) + Date.now().toString(36);
     this.authToken = token;
-    this.authTokenExpiry = new Date(Date.now() + (24 * 60 * 60 * 1000)); // 24 hours
+    this.authTokenExpiry = new Date(Date.now() + (10 * 24 * 60 * 60 * 1000)); // 10 days
     return token;
 };
 
