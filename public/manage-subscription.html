@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage AutoScroll Subscription</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            margin-bottom: 20px;
+        }
+        
+        .subscription-info {
+            display: grid;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #555;
+        }
+        
+        .info-value {
+            color: #333;
+        }
+        
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .status-active {
+            background: #E8F5E8;
+            color: #2E7D32;
+        }
+        
+        .status-trial {
+            background: #E3F2FD;
+            color: #1565C0;
+        }
+        
+        .status-expired {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 140px;
+        }
+        
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+        
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #da190b;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #545b62;
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+        }
+        
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error, .success {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid;
+        }
+        
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            border-left-color: #f44336;
+        }
+        
+        .success {
+            background: #e8f5e8;
+            color: #2e7d32;
+            border-left-color: #4caf50;
+        }
+        
+        .usage-stats {
+            margin-top: 20px;
+        }
+        
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Manage Subscription</h1>
+            <p>Control your AutoScroll Premium subscription</p>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading subscription details...</p>
+        </div>
+
+        <div id="content" style="display: none;">
+            <div class="card">
+                <h2 style="margin-bottom: 20px;">Subscription Details</h2>
+                <div class="subscription-info" id="subscriptionInfo">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+                
+                <div class="actions" id="actions">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <div class="card usage-stats">
+                <h3>Usage Statistics</h3>
+                <div class="stat-grid" id="usageStats">
+                    <!-- Will be populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+
+        <div id="message" style="display: none;"></div>
+    </div>
+
+    <script>
+        let currentUserId = null;
+        let subscriptionStatus = null;
+        
+        // Get user ID from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        currentUserId = urlParams.get('userId');
+        
+        if (!currentUserId) {
+            showMessage('Invalid access. Please try again from the extension.', 'error');
+        }
+        
+        // Load subscription details
+        async function loadSubscriptionDetails() {
+            try {
+                const response = await fetch(`/api/subscription/status/${currentUserId}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    subscriptionStatus = result.data;
+                    displaySubscriptionInfo();
+                    loadUsageAnalytics();
+                    document.getElementById('content').style.display = 'block';
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                showMessage('Failed to load subscription details: ' + error.message, 'error');
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+        
+        function displaySubscriptionInfo() {
+            const infoContainer = document.getElementById('subscriptionInfo');
+            const actionsContainer = document.getElementById('actions');
+            
+            // Subscription status
+            let statusBadge = '';
+            if (subscriptionStatus.hasAccess) {
+                if (subscriptionStatus.accessType === 'trial') {
+                    statusBadge = '<span class="status-badge status-trial">Free Trial</span>';
+                } else {
+                    statusBadge = '<span class="status-badge status-active">Premium Active</span>';
+                }
+            } else {
+                statusBadge = '<span class="status-badge status-expired">Expired</span>';
+            }
+            
+            const planName = subscriptionStatus.accessType === 'trial' ? 'Free Trial' : 
+                           (subscriptionStatus.planId?.includes('yearly') ? 'Yearly Premium' : 'Monthly Premium');
+            
+            infoContainer.innerHTML = `
+                <div class="info-row">
+                    <span class="info-label">Status</span>
+                    <span class="info-value">${statusBadge}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Plan</span>
+                    <span class="info-value">${planName}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Days Remaining</span>
+                    <span class="info-value">${subscriptionStatus.daysRemaining} days</span>
+                </div>
+                ${subscriptionStatus.expiryDate ? `
+                <div class="info-row">
+                    <span class="info-label">Expires On</span>
+                    <span class="info-value">${new Date(subscriptionStatus.expiryDate).toLocaleDateString()}</span>
+                </div>
+                ` : ''}
+                <div class="info-row">
+                    <span class="info-label">Total Usage</span>
+                    <span class="info-value">${subscriptionStatus.totalUsage || 0} scrolls</span>
+                </div>
+            `;
+            
+            // Action buttons
+            let actionButtons = '';
+            
+            if (subscriptionStatus.canUpgrade) {
+                actionButtons += `
+                    <button class="btn btn-primary" onclick="upgradeSubscription()">
+                        ⭐ Upgrade to Premium
+                    </button>
+                `;
+            }
+            
+            if (subscriptionStatus.canCancel) {
+                actionButtons += `
+                    <button class="btn btn-danger" onclick="cancelSubscription()">
+                        ❌ Cancel Subscription
+                    </button>
+                `;
+            }
+            
+            actionButtons += `
+                <button class="btn btn-secondary" onclick="window.close()">
+                    ← Back to Extension
+                </button>
+            `;
+            
+            actionsContainer.innerHTML = actionButtons;
+        }
+        
+        async function loadUsageAnalytics() {
+            try {
+                const response = await fetch(`/api/subscription/analytics/${currentUserId}`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    const analytics = result.data;
+                    const statsContainer = document.getElementById('usageStats');
+                    
+                    statsContainer.innerHTML = `
+                        <div class="stat-item">
+                            <div class="stat-number">${analytics.usage.totalAutoScrolls}</div>
+                            <div class="stat-label">Total Scrolls</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${Math.round(analytics.usage.averageDaily)}</div>
+                            <div class="stat-label">Daily Average</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${analytics.usage.dailyUsage.length}</div>
+                            <div class="stat-label">Active Days</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${analytics.subscription.daysRemaining}</div>
+                            <div class="stat-label">Days Left</div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Failed to load analytics:', error);
+            }
+        }
+        
+        async function upgradeSubscription() {
+            // Instead of redirecting to subscribe.html, create a secure payment link
+            try {
+                const response = await fetch('/api/subscription/create-payment-link', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId: currentUserId,
+                        planType: 'monthly', // Default to monthly, could be made selectable
+                        returnUrl: window.location.href,
+                        cancelUrl: window.location.href
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Open secure payment link
+                    window.open(result.data.paymentLink, '_blank');
+                    showMessage('A secure payment window has opened. Complete your payment there.', 'success');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                showMessage('Failed to create payment link: ' + error.message, 'error');
+            }
+        }
+        
+        async function cancelSubscription() {
+            if (!confirm('Are you sure you want to cancel your subscription? You will lose access at the end of your current billing period.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/subscription/cancel', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        userId: currentUserId,
+                        cancelAtCycleEnd: true
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage('Subscription cancelled successfully. You will retain access until the end of your billing period.', 'success');
+                    // Reload the page to update the UI
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    throw new Error(result.message);
+                }
+                
+            } catch (error) {
+                showMessage('Failed to cancel subscription: ' + error.message, 'error');
+            }
+        }
+        
+        function showMessage(message, type = 'error') {
+            const messageDiv = document.getElementById('message');
+            messageDiv.className = type;
+            messageDiv.textContent = message;
+            messageDiv.style.display = 'block';
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                messageDiv.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Load subscription details on page load
+        loadSubscriptionDetails();
+    </script>
+</body>
+</html>
