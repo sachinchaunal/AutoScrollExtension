@@ -165,10 +165,10 @@ class SubscriptionService {
             user.subscription.razorpay.currentPeriodStart = new Date(razorpaySubscription.current_start * 1000);
             user.subscription.razorpay.currentPeriodEnd = new Date(razorpaySubscription.current_end * 1000);
             
-            // Deactivate trial if active
-            if (user.subscription.trial && user.subscription.trial.isActive) {
-                user.subscription.trial.isActive = false;
-            }
+            // DON'T deactivate trial yet - keep it active during subscription processing
+            // Trial will be deactivated when subscription is actually activated via webhook
+            // This allows users to continue using the extension while payment processes
+            console.log(`🔄 Keeping trial active during subscription processing for user: ${user.email}`);
             
             await user.save();
             
@@ -267,9 +267,13 @@ class SubscriptionService {
             const access = user.hasActiveAccess();
             const summary = user.getSubscriptionSummary();
             
+            // Enhanced subscription state detection for pending payments
+            const subscriptionState = this.detectSubscriptionState(user);
+            
             return {
                 ...access,
                 ...summary,
+                ...subscriptionState,
                 plans: {
                     monthly: {
                         id: SUBSCRIPTION_PLANS.MONTHLY.id,
@@ -298,9 +302,62 @@ class SubscriptionService {
             };
         }
     }
+
+    /**
+     * Detect subscription state for better UI handling
+     * @param {Object} user - User document
+     * @returns {Object} - Enhanced subscription state information
+     */
+    static detectSubscriptionState(user) {
+        const razorpayStatus = user.subscription?.razorpay?.status;
+        const subscriptionId = user.subscription?.razorpay?.subscriptionId;
+        const trialActive = user.subscription?.trial?.isActive;
+        const trialEndDate = user.subscription?.trial?.endDate;
+        const now = new Date();
+
+        // Check if subscription is in processing state
+        if (subscriptionId && (razorpayStatus === 'created' || razorpayStatus === 'authenticated')) {
+            return {
+                isProcessing: true,
+                processingState: razorpayStatus,
+                processingMessage: razorpayStatus === 'created' 
+                    ? 'Subscription created - waiting for payment completion'
+                    : 'Payment received - processing subscription activation (2-3 minutes)',
+                showRefreshButton: true,
+                allowTrialAccess: trialActive && trialEndDate && now <= trialEndDate
+            };
+        }
+
+        // Check if trial is expired but subscription exists (edge case for webhook delays)
+        if (subscriptionId && (!trialActive || (trialEndDate && now > trialEndDate)) && razorpayStatus !== 'active') {
+            const timeSinceSubscriptionCreation = user.subscription.razorpay.currentPeriodStart 
+                ? now - new Date(user.subscription.razorpay.currentPeriodStart)
+                : null;
+            
+            // If subscription was created recently (within 10 minutes), assume it's still processing
+            if (timeSinceSubscriptionCreation && timeSinceSubscriptionCreation < 10 * 60 * 1000) {
+                return {
+                    isProcessing: true,
+                    processingState: 'payment_processing',
+                    processingMessage: 'Subscription payment completed - activating premium features (3-4 minutes)',
+                    showRefreshButton: true,
+                    allowTrialAccess: false // Trial is expired but subscription is pending
+                };
+            }
+        }
+
+        return {
+            isProcessing: false,
+            processingState: null,
+            processingMessage: null,
+            showRefreshButton: false,
+            allowTrialAccess: trialActive && trialEndDate && now <= trialEndDate
+        };
+    }
     
     /**
      * Validate user access for extension features
+     * Enhanced with subscription processing state support
      * @param {Object} user - User document
      * @param {string} feature - Feature to check access for
      * @returns {Object} - Access validation result
@@ -308,13 +365,48 @@ class SubscriptionService {
     static validateFeatureAccess(user, feature = 'autoScroll') {
         try {
             const access = user.hasActiveAccess();
+            const subscriptionState = this.detectSubscriptionState(user);
+            
+            // If subscription is processing and trial is still valid, allow access
+            if (subscriptionState.isProcessing && subscriptionState.allowTrialAccess) {
+                return {
+                    allowed: true,
+                    hasAccess: true,
+                    accessType: 'trial_with_processing_subscription',
+                    source: 'trial',
+                    daysRemaining: access.daysRemaining || 1,
+                    expiryDate: access.expiryDate,
+                    isProcessing: true,
+                    processingState: subscriptionState.processingState,
+                    processingMessage: subscriptionState.processingMessage
+                };
+            }
+            
+            // If subscription is processing but trial expired, allow grace period
+            if (subscriptionState.isProcessing && !subscriptionState.allowTrialAccess) {
+                return {
+                    allowed: true,
+                    hasAccess: true,
+                    accessType: 'subscription_processing',
+                    source: 'subscription_processing',
+                    daysRemaining: 1, // 24 hour grace period
+                    expiryDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+                    isProcessing: true,
+                    processingState: subscriptionState.processingState,
+                    processingMessage: subscriptionState.processingMessage,
+                    gracePeriod: true
+                };
+            }
             
             if (!access.hasAccess) {
                 return {
                     allowed: false,
+                    hasAccess: false,
                     reason: 'trial_expired',
                     message: 'Your free trial has expired. Please subscribe to continue using AutoScroll.',
-                    daysRemaining: 0
+                    daysRemaining: 0,
+                    isProcessing: subscriptionState.isProcessing,
+                    processingState: subscriptionState.processingState
                 };
             }
             
@@ -323,6 +415,7 @@ class SubscriptionService {
                 if (access.type === 'trial') {
                     return {
                         allowed: false,
+                        hasAccess: false,
                         reason: 'premium_feature',
                         message: 'This is a premium feature. Please subscribe to access it.',
                         daysRemaining: access.daysRemaining
@@ -332,15 +425,20 @@ class SubscriptionService {
             
             return {
                 allowed: true,
+                hasAccess: true,
                 accessType: access.type,
+                source: access.type,
                 daysRemaining: access.daysRemaining,
-                expiryDate: access.expiryDate
+                expiryDate: access.expiryDate,
+                isProcessing: subscriptionState.isProcessing,
+                processingState: subscriptionState.processingState
             };
             
         } catch (error) {
             console.error('❌ Failed to validate feature access:', error);
             return {
                 allowed: false,
+                hasAccess: false,
                 reason: 'validation_error',
                 message: 'Unable to validate access. Please try again.',
                 error: error.message

@@ -121,13 +121,26 @@ router.post('/validate-access', async (req, res) => {
         }
         
         const accessValidation = await SubscriptionService.validateFeatureAccess(user, feature);
+        const subscriptionStatus = SubscriptionService.getUserSubscriptionStatus(user);
         
-        // Normalize the response to match what the frontend expects
+        // Enhanced response with subscription processing state
         const normalizedResponse = {
             allowed: accessValidation.hasAccess || accessValidation.allowed || false,
             accessType: accessValidation.source || accessValidation.accessType || 'unknown',
             daysRemaining: accessValidation.daysRemaining || 0,
-            reason: accessValidation.error || accessValidation.warning || (accessValidation.hasAccess ? 'access_granted' : 'access_denied')
+            reason: accessValidation.error || accessValidation.warning || (accessValidation.hasAccess ? 'access_granted' : 'access_denied'),
+            
+            // Enhanced subscription processing information
+            isProcessing: subscriptionStatus.isProcessing || false,
+            processingState: subscriptionStatus.processingState,
+            processingMessage: subscriptionStatus.processingMessage,
+            showRefreshButton: subscriptionStatus.showRefreshButton || false,
+            allowTrialAccess: subscriptionStatus.allowTrialAccess || false,
+            
+            // Additional context for better UX
+            subscriptionId: user.subscription?.razorpay?.subscriptionId,
+            trialEndDate: user.subscription?.trial?.endDate,
+            lastUpdated: new Date()
         };
         
         res.json({

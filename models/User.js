@@ -332,21 +332,12 @@ userSchema.methods.startFreeTrial = function() {
 
 /**
  * Check if user has active access (trial or subscription)
+ * Enhanced with subscription processing state awareness
  */
 userSchema.methods.hasActiveAccess = function() {
     const now = new Date();
     
-    // Check trial access
-    if (this.subscription.trial.isActive && now <= this.subscription.trial.endDate) {
-        return {
-            hasAccess: true,
-            type: 'trial',
-            daysRemaining: Math.ceil((this.subscription.trial.endDate - now) / (1000 * 60 * 60 * 24)),
-            expiryDate: this.subscription.trial.endDate
-        };
-    }
-    
-    // Check subscription access
+    // Check subscription access first
     if (this.subscription.razorpay.status === 'active' && 
         this.subscription.razorpay.currentPeriodEnd && 
         now <= this.subscription.razorpay.currentPeriodEnd) {
@@ -359,10 +350,45 @@ userSchema.methods.hasActiveAccess = function() {
         };
     }
     
+    // Check if subscription is in processing state (created, authenticated)
+    const isSubscriptionProcessing = this.subscription.razorpay.subscriptionId && 
+        (this.subscription.razorpay.status === 'created' || this.subscription.razorpay.status === 'authenticated');
+    
+    // Check trial access
+    if (this.subscription.trial.isActive && now <= this.subscription.trial.endDate) {
+        return {
+            hasAccess: true,
+            type: 'trial',
+            daysRemaining: Math.ceil((this.subscription.trial.endDate - now) / (1000 * 60 * 60 * 24)),
+            expiryDate: this.subscription.trial.endDate,
+            isSubscriptionProcessing: isSubscriptionProcessing
+        };
+    }
+    
+    // Special case: Trial expired but subscription is processing - allow limited access
+    if (isSubscriptionProcessing) {
+        // Check if subscription was created recently (within last 24 hours)
+        const subscriptionAge = this.subscription.razorpay.currentPeriodStart 
+            ? now - new Date(this.subscription.razorpay.currentPeriodStart)
+            : null;
+        
+        if (!subscriptionAge || subscriptionAge < 24 * 60 * 60 * 1000) {
+            return {
+                hasAccess: true,
+                type: 'subscription_processing',
+                daysRemaining: 1, // Grace period
+                expiryDate: new Date(now.getTime() + 24 * 60 * 60 * 1000), // 24 hours grace
+                isSubscriptionProcessing: true,
+                processingState: this.subscription.razorpay.status
+            };
+        }
+    }
+    
     return {
         hasAccess: false,
         type: 'expired',
-        daysRemaining: 0
+        daysRemaining: 0,
+        isSubscriptionProcessing: isSubscriptionProcessing
     };
 };
 
