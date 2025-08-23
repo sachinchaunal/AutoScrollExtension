@@ -315,14 +315,25 @@ class SubscriptionService {
         const trialEndDate = user.subscription?.trial?.endDate;
         const now = new Date();
 
+        // If subscription is active, definitely not processing
+        if (subscriptionId && razorpayStatus === 'active') {
+            return {
+                isProcessing: false,
+                processingState: null,
+                processingMessage: null,
+                showRefreshButton: false,
+                allowTrialAccess: false // Not needed, subscription is active
+            };
+        }
+
         // Check if subscription is in processing state
         if (subscriptionId && (razorpayStatus === 'created' || razorpayStatus === 'authenticated')) {
             return {
                 isProcessing: true,
                 processingState: razorpayStatus,
                 processingMessage: razorpayStatus === 'created' 
-                    ? 'Subscription created - waiting for payment completion'
-                    : 'Payment received - processing subscription activation (2-3 minutes)',
+                    ? 'Subscription created - waiting for payment completion (may take 1-2 minutes)'
+                    : 'Payment received - processing subscription activation (1-2 minutes for confirmation)',
                 showRefreshButton: true,
                 allowTrialAccess: trialActive && trialEndDate && now <= trialEndDate
             };
@@ -339,7 +350,7 @@ class SubscriptionService {
                 return {
                     isProcessing: true,
                     processingState: 'payment_processing',
-                    processingMessage: 'Subscription payment completed - activating premium features (3-4 minutes)',
+                    processingMessage: 'Subscription payment completed - activating premium features (1-2 minutes for confirmation)',
                     showRefreshButton: true,
                     allowTrialAccess: false // Trial is expired but subscription is pending
                 };
@@ -453,16 +464,19 @@ class SubscriptionService {
      */
     static async handleWebhookEvent(event) {
         try {
-            console.log(`📧 Processing webhook: ${event.event} for ${event.payload.subscription?.entity?.id || 'unknown'}`);
+            const subscriptionId = event.payload.subscription?.entity?.id || 'unknown';
+            console.log(`📧 Processing webhook: ${event.event} for ${subscriptionId}`);
             
             switch (event.event) {
                 case 'subscription.authenticated':
                     return await this.handleSubscriptionAuthenticated(event.payload.subscription.entity);
                     
                 case 'subscription.activated':
+                    console.log(`🚀 Processing subscription activation for: ${subscriptionId}`);
                     return await this.handleSubscriptionActivated(event.payload.subscription.entity);
                     
                 case 'subscription.charged':
+                    console.log(`💳 Processing subscription charge for: ${subscriptionId}`);
                     return await this.handleSubscriptionCharged(event.payload.payment.entity, event.payload.subscription.entity);
                     
                 case 'subscription.cancelled':
@@ -555,6 +569,8 @@ class SubscriptionService {
                 return { success: false, message: 'User not found' };
             }
             
+            console.log(`🔄 Activating subscription for user: ${user.email}, Current status: ${user.subscription.razorpay.status} → active`);
+            
             // Activate subscription and enable all features
             user.subscription.razorpay.status = SUBSCRIPTION_STATUS.ACTIVE;
             user.subscription.razorpay.currentPeriodStart = new Date(subscription.current_start * 1000);
@@ -567,11 +583,15 @@ class SubscriptionService {
             // Deactivate trial
             if (user.subscription.trial) {
                 user.subscription.trial.isActive = false;
+                console.log(`🔄 Trial deactivated for user: ${user.email}`);
             }
             
             await user.save();
             
-            console.log(`✅ Subscription activated for user: ${user.email}, Plan: ${subscription.plan_id}`);
+            // Verify the save was successful
+            const verifyUser = await User.findById(user._id);
+            console.log(`✅ Subscription activated for user: ${verifyUser.email}, Final status: ${verifyUser.subscription.razorpay.status}, Plan: ${subscription.plan_id}`);
+            
             return { success: true, message: 'Subscription activated' };
             
         } catch (error) {
@@ -601,8 +621,16 @@ class SubscriptionService {
                 paidAt: new Date(payment.created_at * 1000)
             });
             
-            // Update subscription details
+            // Update subscription details, but preserve 'active' status if it's already set
+            const currentStatus = user.subscription.razorpay.status;
             user.updateSubscriptionStatus(subscription);
+            
+            // If subscription was already activated by previous webhook, don't override it
+            if (currentStatus === SUBSCRIPTION_STATUS.ACTIVE) {
+                user.subscription.razorpay.status = SUBSCRIPTION_STATUS.ACTIVE;
+                console.log(`🔒 Preserving active status for user: ${user.email} (charged webhook received after activation)`);
+            }
+            
             await user.save();
             
             console.log(`💰 Payment processed for user: ${user.email}, Amount: ${payment.amount/100} ${payment.currency}`);

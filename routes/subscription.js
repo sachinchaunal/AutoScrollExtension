@@ -1025,6 +1025,70 @@ router.post('/trigger-charge', async (req, res) => {
 });
 
 /**
+ * DEBUG: Get detailed subscription information for troubleshooting
+ * GET /api/subscription/debug/:userId
+ */
+router.get('/debug/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        const subscriptionStatus = SubscriptionService.getUserSubscriptionStatus(user);
+        const accessValidation = await SubscriptionService.validateFeatureAccess(user, 'autoScroll');
+        
+        // Detailed debug information
+        const debugInfo = {
+            userId: user._id,
+            email: user.email,
+            subscription: {
+                razorpay: {
+                    subscriptionId: user.subscription?.razorpay?.subscriptionId,
+                    status: user.subscription?.razorpay?.status,
+                    planId: user.subscription?.razorpay?.planId,
+                    currentPeriodStart: user.subscription?.razorpay?.currentPeriodStart,
+                    currentPeriodEnd: user.subscription?.razorpay?.currentPeriodEnd,
+                    paymentHistory: user.subscription?.razorpay?.paymentHistory?.length || 0
+                },
+                trial: {
+                    isActive: user.subscription?.trial?.isActive,
+                    startDate: user.subscription?.trial?.startDate,
+                    endDate: user.subscription?.trial?.endDate
+                },
+                features: user.subscription?.features,
+                usage: {
+                    totalAutoScrolls: user.subscription?.usage?.totalAutoScrolls,
+                    lastAccessedAt: user.subscription?.usage?.lastAccessedAt
+                }
+            },
+            computedStatus: subscriptionStatus,
+            accessValidation: accessValidation,
+            currentTime: new Date(),
+            hasActiveAccess: user.hasActiveAccess()
+        };
+        
+        res.json({
+            success: true,
+            data: debugInfo
+        });
+        
+    } catch (error) {
+        console.error('❌ Debug subscription error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get debug information',
+            error: error.message
+        });
+    }
+});
+
+/**
  * ADMIN: Manually activate subscription (simulate successful webhook)
  * POST /api/subscription/admin/activate
  */
