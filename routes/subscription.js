@@ -1089,6 +1089,235 @@ router.get('/debug/:userId', async (req, res) => {
 });
 
 /**
+ * Force refresh subscription status (for stuck subscriptions)
+ * POST /api/subscription/force-refresh
+ */
+router.post('/force-refresh', async (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        const subscriptionId = user.subscription?.razorpay?.subscriptionId;
+        const currentStatus = user.subscription?.razorpay?.status;
+        
+        console.log(`🔄 Force refresh for user: ${user.email}, Current status: ${currentStatus}, Subscription: ${subscriptionId}`);
+        
+        // If user has a subscription, check its status with Razorpay
+        if (subscriptionId) {
+            try {
+                const { fetchSubscription } = require('../config/razorpay');
+                const razorpaySubscription = await fetchSubscription(subscriptionId);
+                
+                console.log(`📊 Razorpay says subscription ${subscriptionId} is: ${razorpaySubscription.status}`);
+                
+                // If Razorpay says it's active but our database doesn't reflect that
+                if (razorpaySubscription.status === 'active' && currentStatus !== 'active') {
+                    console.log(`🔧 Fixing stuck subscription: ${subscriptionId} for user: ${user.email}`);
+                    
+                    // Manually activate the subscription
+                    user.subscription.razorpay.status = 'active';
+                    user.subscription.razorpay.currentPeriodStart = new Date(razorpaySubscription.current_start * 1000);
+                    user.subscription.razorpay.currentPeriodEnd = new Date(razorpaySubscription.current_end * 1000);
+                    user.subscription.features.autoScroll = true;
+                    user.subscription.features.analytics = true;
+                    user.subscription.features.customSettings = true;
+                    user.subscription.features.prioritySupport = true;
+                    
+                    // Deactivate trial
+                    if (user.subscription.trial) {
+                        user.subscription.trial.isActive = false;
+                    }
+                    
+                    await user.save();
+                    
+                    console.log(`✅ Successfully fixed stuck subscription for: ${user.email}`);
+                    
+                    // Return updated subscription status
+                    const updatedStatus = SubscriptionService.getUserSubscriptionStatus(user);
+                    
+                    res.json({
+                        success: true,
+                        message: 'Subscription status successfully updated to active',
+                        data: updatedStatus,
+                        fixed: true
+                    });
+                } else {
+                    // No fix needed, just return current status
+                    const subscriptionStatus = SubscriptionService.getUserSubscriptionStatus(user);
+                    
+                    res.json({
+                        success: true,
+                        message: 'Subscription status is up to date',
+                        data: subscriptionStatus,
+                        fixed: false,
+                        razorpayStatus: razorpaySubscription.status
+                    });
+                }
+                
+            } catch (fetchError) {
+                console.error(`❌ Failed to fetch subscription from Razorpay:`, fetchError);
+                
+                // Fallback: just return current status
+                const subscriptionStatus = SubscriptionService.getUserSubscriptionStatus(user);
+                
+                res.json({
+                    success: true,
+                    message: 'Could not verify with Razorpay, returning current status',
+                    data: subscriptionStatus,
+                    fixed: false,
+                    error: 'Could not reach Razorpay'
+                });
+            }
+        } else {
+            // No subscription ID, just return current status
+            const subscriptionStatus = SubscriptionService.getUserSubscriptionStatus(user);
+            
+            res.json({
+                success: true,
+                message: 'No subscription found',
+                data: subscriptionStatus,
+                fixed: false
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Force refresh error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to refresh subscription status',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * ADMIN: Fix stuck subscription status (force refresh from database)
+ * POST /api/subscription/admin/fix-stuck
+ */
+router.post('/admin/fix-stuck', async (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'userId is required'
+            });
+        }
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        console.log(`🔧 ADMIN: Fixing stuck subscription for ${user.email}`);
+        console.log(`Current status: ${user.subscription?.razorpay?.status}`);
+        console.log(`Subscription ID: ${user.subscription?.razorpay?.subscriptionId}`);
+        
+        // If user has an active subscription but is stuck in processing
+        if (user.subscription?.razorpay?.subscriptionId && 
+            user.subscription?.razorpay?.status !== 'active') {
+            
+            // Force check subscription status from Razorpay
+            const subscriptionId = user.subscription.razorpay.subscriptionId;
+            
+            try {
+                const { fetchSubscription } = require('../config/razorpay');
+                const razorpaySubscription = await fetchSubscription(subscriptionId);
+                
+                console.log(`🔧 Razorpay subscription status: ${razorpaySubscription.status}`);
+                
+                if (razorpaySubscription.status === 'active') {
+                    // Force activate the subscription
+                    user.subscription.razorpay.status = 'active';
+                    user.subscription.razorpay.currentPeriodStart = new Date(razorpaySubscription.current_start * 1000);
+                    user.subscription.razorpay.currentPeriodEnd = new Date(razorpaySubscription.current_end * 1000);
+                    user.subscription.features.autoScroll = true;
+                    user.subscription.features.analytics = true;
+                    user.subscription.features.customSettings = true;
+                    user.subscription.features.prioritySupport = true;
+                    
+                    // Deactivate trial
+                    if (user.subscription.trial) {
+                        user.subscription.trial.isActive = false;
+                    }
+                    
+                    await user.save();
+                    
+                    console.log(`✅ ADMIN: Fixed stuck subscription for ${user.email} - now active`);
+                    
+                    res.json({
+                        success: true,
+                        message: 'Subscription status fixed - now active',
+                        data: {
+                            userId: user._id,
+                            subscriptionId: subscriptionId,
+                            oldStatus: 'stuck',
+                            newStatus: 'active',
+                            razorpayStatus: razorpaySubscription.status
+                        }
+                    });
+                } else {
+                    res.json({
+                        success: false,
+                        message: `Razorpay subscription is not active: ${razorpaySubscription.status}`,
+                        data: {
+                            userId: user._id,
+                            subscriptionId: subscriptionId,
+                            currentStatus: user.subscription.razorpay.status,
+                            razorpayStatus: razorpaySubscription.status
+                        }
+                    });
+                }
+                
+            } catch (fetchError) {
+                console.error(`❌ Failed to fetch subscription from Razorpay:`, fetchError);
+                res.status(500).json({
+                    success: false,
+                    message: 'Failed to fetch subscription from Razorpay',
+                    error: fetchError.message
+                });
+            }
+        } else {
+            res.json({
+                success: false,
+                message: 'Subscription is not stuck or already active',
+                data: {
+                    userId: user._id,
+                    currentStatus: user.subscription?.razorpay?.status,
+                    subscriptionId: user.subscription?.razorpay?.subscriptionId
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Admin fix stuck subscription error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fix stuck subscription',
+            error: error.message
+        });
+    }
+});
+
+/**
  * ADMIN: Manually activate subscription (simulate successful webhook)
  * POST /api/subscription/admin/activate
  */

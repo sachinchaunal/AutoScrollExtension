@@ -459,42 +459,88 @@ class SubscriptionService {
     
     /**
      * Handle Razorpay webhook events
+     * ENHANCED: Implements comprehensive webhook processing with race condition prevention
      * @param {Object} event - Webhook event data
      * @returns {Promise<Object>} - Processing result
      */
     static async handleWebhookEvent(event) {
         try {
             const subscriptionId = event.payload.subscription?.entity?.id || 'unknown';
-            console.log(`📧 Processing webhook: ${event.event} for ${subscriptionId}`);
+            const eventType = event.event;
             
-            switch (event.event) {
+            console.log(`📧 Processing webhook: ${eventType} for ${subscriptionId}`);
+            
+            // ENHANCED LOGGING: Track webhook order and timing for race condition debugging
+            const timestamp = new Date().toISOString();
+            console.log(`🕐 Webhook received: ${timestamp} - ${eventType} for subscription ${subscriptionId}`);
+            
+            // VALIDATION: Ensure webhook has required data
+            if (!event.payload || !eventType) {
+                throw new SubscriptionError(
+                    'Invalid webhook payload structure',
+                    'INVALID_WEBHOOK_PAYLOAD',
+                    400
+                );
+            }
+            
+            let result;
+            
+            switch (eventType) {
                 case 'subscription.authenticated':
-                    return await this.handleSubscriptionAuthenticated(event.payload.subscription.entity);
+                    console.log(`🔐 Processing subscription authentication for: ${subscriptionId}`);
+                    result = await this.handleSubscriptionAuthenticated(event.payload.subscription.entity);
+                    break;
                     
                 case 'subscription.activated':
                     console.log(`🚀 Processing subscription activation for: ${subscriptionId}`);
-                    return await this.handleSubscriptionActivated(event.payload.subscription.entity);
+                    result = await this.handleSubscriptionActivated(event.payload.subscription.entity);
+                    break;
                     
                 case 'subscription.charged':
                     console.log(`💳 Processing subscription charge for: ${subscriptionId}`);
-                    return await this.handleSubscriptionCharged(event.payload.payment.entity, event.payload.subscription.entity);
+                    result = await this.handleSubscriptionCharged(event.payload.payment.entity, event.payload.subscription.entity);
+                    break;
                     
                 case 'subscription.cancelled':
-                    return await this.handleSubscriptionCancelled(event.payload.subscription.entity);
+                    console.log(`❌ Processing subscription cancellation for: ${subscriptionId}`);
+                    result = await this.handleSubscriptionCancelled(event.payload.subscription.entity);
+                    break;
                     
                 case 'subscription.completed':
-                    return await this.handleSubscriptionCompleted(event.payload.subscription.entity);
+                    console.log(`✅ Processing subscription completion for: ${subscriptionId}`);
+                    result = await this.handleSubscriptionCompleted(event.payload.subscription.entity);
+                    break;
                     
                 case 'payment.failed':
-                    return await this.handlePaymentFailed(event.payload.payment.entity);
+                    console.log(`💸 Processing payment failure for: ${subscriptionId}`);
+                    result = await this.handlePaymentFailed(event.payload.payment.entity);
+                    break;
                     
                 default:
-                    console.log(`ℹ️ Unhandled webhook event: ${event.event}`);
-                    return { success: true, message: 'Event acknowledged but not processed' };
+                    console.log(`ℹ️ Unhandled webhook event: ${eventType}`);
+                    result = { success: true, message: 'Event acknowledged but not processed' };
+                    break;
             }
             
+            // CRITICAL: Post-webhook validation for race condition detection
+            if (['subscription.activated', 'subscription.authenticated', 'subscription.charged'].includes(eventType)) {
+                try {
+                    const validationResult = await this.validateWebhookProcessing(subscriptionId, eventType, result);
+                    if (!validationResult.success) {
+                        console.warn(`⚠️ Post-webhook validation warning:`, validationResult.warning);
+                    }
+                } catch (validationError) {
+                    console.warn(`⚠️ Could not validate post-webhook status:`, validationError.message);
+                }
+            }
+            
+            console.log(`✅ Webhook ${eventType} processed successfully for ${subscriptionId}`);
+            console.log(`📊 Result:`, JSON.stringify(result, null, 2));
+            
+            return result;
+            
         } catch (error) {
-            console.error('❌ Webhook processing failed:', error);
+            console.error(`❌ Webhook processing failed for ${event.event}:`, error);
             
             // Store failed webhook for retry
             await handleWebhookError(event, error);
@@ -508,9 +554,84 @@ class SubscriptionService {
     }
     
     /**
+     * Validate webhook processing results to detect race conditions
+     * BEST PRACTICE: Post-processing validation ensures data consistency
+     * @param {string} subscriptionId - Subscription ID
+     * @param {string} eventType - Webhook event type
+     * @param {Object} processingResult - Result from webhook handler
+     * @returns {Promise<Object>} - Validation result
+     */
+    static async validateWebhookProcessing(subscriptionId, eventType, processingResult) {
+        try {
+            const user = await User.findOne({ 'subscription.razorpay.subscriptionId': subscriptionId });
+            
+            if (!user) {
+                return { success: false, warning: 'User not found during validation' };
+            }
+            
+            const finalStatus = user.subscription.razorpay.status;
+            const userEmail = user.email;
+            
+            console.log(`🔍 Post-webhook validation: ${userEmail} subscription status is "${finalStatus}" after ${eventType}`);
+            
+            // RACE CONDITION DETECTION: Check for unexpected status transitions
+            switch (eventType) {
+                case 'subscription.activated':
+                    if (finalStatus !== SUBSCRIPTION_STATUS.ACTIVE) {
+                        const warning = `Expected 'active' status after activation, but found '${finalStatus}' for user ${userEmail}`;
+                        console.warn(`⚠️ POTENTIAL RACE CONDITION: ${warning}`);
+                        return { success: false, warning };
+                    }
+                    break;
+                    
+                case 'subscription.authenticated':
+                    // If processing result indicates status was preserved, that's expected
+                    if (processingResult.statusPreserved) {
+                        console.log(`✅ Race condition handled correctly: Active status preserved for ${userEmail}`);
+                    } else if (finalStatus !== SUBSCRIPTION_STATUS.AUTHENTICATED && finalStatus !== SUBSCRIPTION_STATUS.ACTIVE) {
+                        const warning = `Unexpected status '${finalStatus}' after authentication for user ${userEmail}`;
+                        console.warn(`⚠️ POTENTIAL ISSUE: ${warning}`);
+                        return { success: false, warning };
+                    }
+                    break;
+                    
+                case 'subscription.charged':
+                    // Status should be either active or authenticated, not downgraded
+                    if (![SUBSCRIPTION_STATUS.ACTIVE, SUBSCRIPTION_STATUS.AUTHENTICATED].includes(finalStatus)) {
+                        const warning = `Unexpected status '${finalStatus}' after charge for user ${userEmail}`;
+                        console.warn(`⚠️ POTENTIAL ISSUE: ${warning}`);
+                        return { success: false, warning };
+                    }
+                    break;
+            }
+            
+            // FEATURE VALIDATION: Ensure features are properly enabled for active subscriptions
+            if (finalStatus === SUBSCRIPTION_STATUS.ACTIVE) {
+                const features = user.subscription.features;
+                const expectedFeatures = ['autoScroll', 'analytics', 'customSettings', 'prioritySupport'];
+                const missingFeatures = expectedFeatures.filter(feature => !features[feature]);
+                
+                if (missingFeatures.length > 0) {
+                    const warning = `Active subscription missing features: ${missingFeatures.join(', ')} for user ${userEmail}`;
+                    console.warn(`⚠️ FEATURE VALIDATION ISSUE: ${warning}`);
+                    return { success: false, warning };
+                }
+            }
+            
+            console.log(`✅ Post-webhook validation passed for ${userEmail}: ${eventType} → ${finalStatus}`);
+            return { success: true, finalStatus, featuresValid: true };
+            
+        } catch (error) {
+            console.error(`❌ Webhook validation error:`, error);
+            return { success: false, warning: `Validation error: ${error.message}` };
+        }
+    }
+    
+    /**
      * Handle subscription authenticated webhook
      * This is called when customer completes authentication transaction
      * For immediate start subscriptions, this means the subscription is ready for charging
+     * BEST PRACTICE: Implements status preservation to prevent webhook race conditions
      */
     static async handleSubscriptionAuthenticated(subscription) {
         try {
@@ -521,44 +642,109 @@ class SubscriptionService {
                 return { success: false, message: 'User not found' };
             }
             
-            // Update subscription status to authenticated
+            // Get current status before updating (defensive programming)
+            const currentStatus = user.subscription.razorpay.status;
+            const userEmail = user.email;
+            
+            console.log(`🔐 Processing subscription.authenticated webhook for user: ${userEmail}`);
+            console.log(`📊 Current status: "${currentStatus}" → evaluating transition to "authenticated"`);
+            
+            // CRITICAL: Status hierarchy preservation to prevent race conditions
+            // 'active' is a higher priority status than 'authenticated'
+            // If subscription is already active, preserve that status
+            if (currentStatus === SUBSCRIPTION_STATUS.ACTIVE) {
+                console.log(`🔒 STATUS PRESERVATION: Subscription already active for user: ${userEmail}`);
+                console.log(`🔒 RACE CONDITION PREVENTION: Preserving 'active' status despite 'authenticated' webhook`);
+                
+                // Still update billing period data (idempotent operation)
+                const newPeriodStart = new Date(subscription.current_start * 1000);
+                const newPeriodEnd = new Date(subscription.current_end * 1000);
+                
+                user.subscription.razorpay.currentPeriodStart = newPeriodStart;
+                user.subscription.razorpay.currentPeriodEnd = newPeriodEnd;
+                
+                // Add metadata about webhook order for debugging
+                user.subscription.razorpay.lastWebhookReceived = {
+                    type: 'subscription.authenticated',
+                    timestamp: new Date(),
+                    preservedStatus: true,
+                    reason: 'subscription_already_active'
+                };
+                
+                await user.save();
+                
+                console.log(`📅 Updated billing period for active subscription: ${userEmail}`);
+                console.log(`📅 Billing period: ${newPeriodStart} to ${newPeriodEnd}`);
+                console.log(`✅ Race condition handled successfully - active status preserved`);
+                
+                return { 
+                    success: true, 
+                    message: 'Subscription already active, billing period updated',
+                    statusPreserved: true,
+                    currentStatus: 'active'
+                };
+            }
+            
+            // SAFE TRANSITION: Only update status if not in a higher priority state
+            console.log(`🔄 Safe status transition: "${currentStatus}" → "authenticated"`);
+            
             user.subscription.razorpay.status = SUBSCRIPTION_STATUS.AUTHENTICATED;
             user.subscription.razorpay.currentPeriodStart = new Date(subscription.current_start * 1000);
             user.subscription.razorpay.currentPeriodEnd = new Date(subscription.current_end * 1000);
             
+            // Add webhook metadata for audit trail
+            user.subscription.razorpay.lastWebhookReceived = {
+                type: 'subscription.authenticated',
+                timestamp: new Date(),
+                preservedStatus: false,
+                previousStatus: currentStatus
+            };
+            
             await user.save();
             
-            console.log(`🔐 Subscription authenticated for user: ${user.email}, ID: ${subscription.id}`);
+            console.log(`🔐 Subscription authenticated for user: ${userEmail}, ID: ${subscription.id}`);
             console.log(`📅 Billing period: ${new Date(subscription.current_start * 1000)} to ${new Date(subscription.current_end * 1000)}`);
             
-            // For immediate start subscriptions, fetch and process any pending invoices
+            // SAFE OPERATION: Process pending invoices with error isolation
             try {
                 const pendingInvoices = await fetchPendingInvoices(subscription.id);
                 
                 if (pendingInvoices.length > 0) {
-                    console.log(`� Processing ${pendingInvoices.length} pending invoices for subscription: ${subscription.id}`);
+                    console.log(`📋 Processing ${pendingInvoices.length} pending invoices for subscription: ${subscription.id}`);
                     
                     for (const invoice of pendingInvoices) {
                         if (invoice.status === 'issued') {
-                            console.log(`� Triggering payment for invoice: ${invoice.id}`);
+                            console.log(`💳 Triggering payment for invoice: ${invoice.id}`);
                             await chargeInvoice(invoice.id);
                         }
                     }
+                } else {
+                    console.log(`📋 No pending invoices found for subscription: ${subscription.id}`);
                 }
             } catch (invoiceError) {
                 console.warn(`⚠️ Could not process pending invoices for subscription: ${subscription.id}`, invoiceError.message);
-                // Don't fail the entire webhook for invoice processing issues
+                // BEST PRACTICE: Don't fail the entire webhook for invoice processing issues
+                // This ensures webhook processing continues even if invoice handling fails
             }
-            return { success: true, message: 'Subscription authenticated' };
+            
+            return { 
+                success: true, 
+                message: 'Subscription authenticated',
+                statusPreserved: false,
+                newStatus: 'authenticated'
+            };
             
         } catch (error) {
             console.error('❌ Failed to handle subscription authentication:', error);
+            // BEST PRACTICE: Preserve error context for debugging
+            console.error('❌ Subscription data:', JSON.stringify(subscription, null, 2));
             throw error;
         }
     }
 
     /**
      * Handle subscription activated webhook
+     * BEST PRACTICE: Implements atomic state transitions and comprehensive logging
      */
     static async handleSubscriptionActivated(subscription) {
         try {
@@ -569,39 +755,96 @@ class SubscriptionService {
                 return { success: false, message: 'User not found' };
             }
             
-            console.log(`🔄 Activating subscription for user: ${user.email}, Current status: ${user.subscription.razorpay.status} → active`);
+            const currentStatus = user.subscription.razorpay.status;
+            const userEmail = user.email;
             
-            // Activate subscription and enable all features
+            console.log(`� Processing subscription.activated webhook for user: ${userEmail}`);
+            console.log(`📊 Status transition: "${currentStatus}" → "active"`);
+            
+            // DEFENSIVE CHECK: Ensure subscription data is valid
+            if (!subscription.current_start || !subscription.current_end) {
+                console.warn(`⚠️ Invalid subscription period data for ${subscription.id}`);
+                return { success: false, message: 'Invalid subscription period data' };
+            }
+            
+            // ATOMIC OPERATION: Update subscription status and enable all features
+            const previousTrialStatus = user.subscription.trial?.isActive;
+            
             user.subscription.razorpay.status = SUBSCRIPTION_STATUS.ACTIVE;
             user.subscription.razorpay.currentPeriodStart = new Date(subscription.current_start * 1000);
             user.subscription.razorpay.currentPeriodEnd = new Date(subscription.current_end * 1000);
+            
+            // Enable all premium features atomically
             user.subscription.features.autoScroll = true;
             user.subscription.features.analytics = true;
             user.subscription.features.customSettings = true;
             user.subscription.features.prioritySupport = true;
             
-            // Deactivate trial
+            // CLEAN TRANSITION: Deactivate trial when subscription activates
             if (user.subscription.trial) {
                 user.subscription.trial.isActive = false;
-                console.log(`🔄 Trial deactivated for user: ${user.email}`);
+                user.subscription.trial.deactivatedAt = new Date();
+                user.subscription.trial.deactivationReason = 'subscription_activated';
+                console.log(`🔄 Trial deactivated for user: ${userEmail} (reason: subscription_activated)`);
             }
+            
+            // Add comprehensive webhook metadata for audit trail
+            user.subscription.razorpay.lastWebhookReceived = {
+                type: 'subscription.activated',
+                timestamp: new Date(),
+                previousStatus: currentStatus,
+                previousTrialStatus: previousTrialStatus,
+                activationSuccess: true
+            };
+            
+            // AUDIT LOG: Record subscription activation event
+            user.subscription.razorpay.activationHistory = user.subscription.razorpay.activationHistory || [];
+            user.subscription.razorpay.activationHistory.push({
+                activatedAt: new Date(),
+                planId: subscription.plan_id,
+                periodStart: new Date(subscription.current_start * 1000),
+                periodEnd: new Date(subscription.current_end * 1000),
+                webhookId: subscription.id
+            });
             
             await user.save();
             
-            // Verify the save was successful
+            // VERIFICATION: Confirm the save was successful
             const verifyUser = await User.findById(user._id);
-            console.log(`✅ Subscription activated for user: ${verifyUser.email}, Final status: ${verifyUser.subscription.razorpay.status}, Plan: ${subscription.plan_id}`);
+            const finalStatus = verifyUser.subscription.razorpay.status;
             
-            return { success: true, message: 'Subscription activated' };
+            if (finalStatus !== SUBSCRIPTION_STATUS.ACTIVE) {
+                console.error(`❌ CRITICAL: Status verification failed for ${userEmail}. Expected: active, Got: ${finalStatus}`);
+                throw new Error(`Status verification failed: expected active, got ${finalStatus}`);
+            }
+            
+            console.log(`✅ Subscription activated successfully for user: ${userEmail}`);
+            console.log(`📊 Final status: ${finalStatus}, Plan: ${subscription.plan_id}`);
+            console.log(`📅 Period: ${new Date(subscription.current_start * 1000)} to ${new Date(subscription.current_end * 1000)}`);
+            console.log(`🎯 Features enabled: autoScroll, analytics, customSettings, prioritySupport`);
+            
+            return { 
+                success: true, 
+                message: 'Subscription activated',
+                finalStatus: finalStatus,
+                featuresEnabled: true,
+                trialDeactivated: previousTrialStatus
+            };
             
         } catch (error) {
             console.error('❌ Failed to handle subscription activation:', error);
+            console.error('❌ Subscription data:', JSON.stringify(subscription, null, 2));
+            
+            // ROLLBACK CONSIDERATION: In production, consider implementing rollback logic
+            // if partial updates occurred before the error
+            
             throw error;
         }
     }
     
     /**
      * Handle subscription charged webhook
+     * BEST PRACTICE: Implements status preservation and comprehensive payment tracking
      */
     static async handleSubscriptionCharged(payment, subscription) {
         try {
@@ -612,32 +855,88 @@ class SubscriptionService {
                 return { success: false, message: 'User not found' };
             }
             
-            // Record payment in user history
-            user.subscription.razorpay.paymentHistory.push({
+            const currentStatus = user.subscription.razorpay.status;
+            const userEmail = user.email;
+            
+            console.log(`💳 Processing subscription.charged webhook for user: ${userEmail}`);
+            console.log(`💰 Payment: ${payment.amount/100} ${payment.currency} (${payment.status})`);
+            console.log(`📊 Current subscription status: "${currentStatus}"`);
+            
+            // DEFENSIVE VALIDATION: Ensure payment data is valid
+            if (!payment.id || !payment.amount || !payment.created_at) {
+                console.warn(`⚠️ Invalid payment data for subscription ${subscription.id}`);
+                return { success: false, message: 'Invalid payment data' };
+            }
+            
+            // COMPREHENSIVE PAYMENT TRACKING: Record payment in user history
+            const paymentRecord = {
                 paymentId: payment.id,
                 amount: payment.amount,
                 currency: payment.currency,
                 status: payment.status,
-                paidAt: new Date(payment.created_at * 1000)
-            });
+                paidAt: new Date(payment.created_at * 1000),
+                subscriptionId: subscription.id,
+                method: payment.method || 'unknown',
+                webhookProcessedAt: new Date()
+            };
             
-            // Update subscription details, but preserve 'active' status if it's already set
-            const currentStatus = user.subscription.razorpay.status;
+            // Initialize payment history if not exists
+            if (!user.subscription.razorpay.paymentHistory) {
+                user.subscription.razorpay.paymentHistory = [];
+            }
+            
+            user.subscription.razorpay.paymentHistory.push(paymentRecord);
+            
+            // STATUS PRESERVATION: Critical for preventing race conditions
+            // Store the current status before updating subscription details
+            const statusBeforeUpdate = user.subscription.razorpay.status;
+            
+            // Update subscription details from webhook data
             user.updateSubscriptionStatus(subscription);
             
-            // If subscription was already activated by previous webhook, don't override it
-            if (currentStatus === SUBSCRIPTION_STATUS.ACTIVE) {
+            // RACE CONDITION PREVENTION: Preserve higher priority status
+            // If subscription was already activated by previous webhook, don't downgrade it
+            if (statusBeforeUpdate === SUBSCRIPTION_STATUS.ACTIVE) {
                 user.subscription.razorpay.status = SUBSCRIPTION_STATUS.ACTIVE;
-                console.log(`🔒 Preserving active status for user: ${user.email} (charged webhook received after activation)`);
+                console.log(`🔒 STATUS PRESERVATION: Maintaining 'active' status for user: ${userEmail}`);
+                console.log(`🔒 RACE CONDITION PREVENTION: Charged webhook did not override active status`);
             }
+            
+            // Add webhook metadata for audit trail
+            user.subscription.razorpay.lastWebhookReceived = {
+                type: 'subscription.charged',
+                timestamp: new Date(),
+                paymentId: payment.id,
+                amount: payment.amount,
+                statusPreserved: statusBeforeUpdate === SUBSCRIPTION_STATUS.ACTIVE,
+                statusBefore: statusBeforeUpdate,
+                statusAfter: user.subscription.razorpay.status
+            };
             
             await user.save();
             
-            console.log(`💰 Payment processed for user: ${user.email}, Amount: ${payment.amount/100} ${payment.currency}`);
-            return { success: true, message: 'Payment recorded' };
+            // AUDIT LOGGING: Comprehensive payment processing log
+            console.log(`💰 Payment processed successfully for user: ${userEmail}`);
+            console.log(`💰 Payment details: ${payment.amount/100} ${payment.currency} (ID: ${payment.id})`);
+            console.log(`📊 Status handling: ${statusBeforeUpdate} → ${user.subscription.razorpay.status}`);
+            
+            if (statusBeforeUpdate === SUBSCRIPTION_STATUS.ACTIVE) {
+                console.log(`✅ Race condition handled: Active status preserved during charged webhook`);
+            }
+            
+            return { 
+                success: true, 
+                message: 'Payment recorded',
+                paymentAmount: payment.amount/100,
+                paymentCurrency: payment.currency,
+                statusPreserved: statusBeforeUpdate === SUBSCRIPTION_STATUS.ACTIVE,
+                finalStatus: user.subscription.razorpay.status
+            };
             
         } catch (error) {
             console.error('❌ Failed to handle subscription charge:', error);
+            console.error('❌ Payment data:', JSON.stringify(payment, null, 2));
+            console.error('❌ Subscription data:', JSON.stringify(subscription, null, 2));
             throw error;
         }
     }
