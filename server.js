@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const cron = require('node-cron');
@@ -17,6 +16,12 @@ const analyticsRoutes = require('./routes/analytics');
 const websiteRoutes = require('./routes/website');
 const webAuthRoutes = require('./routes/web-auth');
 const subscriptionRoutes = require('./routes/subscription');
+
+// Import smart rate limiting middleware
+const { 
+    smartRateLimit, 
+    requestFrequencyAnalyzer 
+} = require('./middleware/rateLimiting');
 
 const app = express();
 
@@ -107,12 +112,9 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100 // limit each IP to 100 requests per windowMs
-});
-app.use(limiter);
+// Smart rate limiting based on endpoint type
+app.use('/api', requestFrequencyAnalyzer);
+app.use('/api', smartRateLimit);
 
 // Raw body capture middleware (removed - no longer needed without payment webhooks)
 
