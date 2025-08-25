@@ -41,8 +41,13 @@ const CONFIG = {
 };
 
 // Trust proxy for production deployment (Render, Heroku, etc.)
+// Configure specific trust proxy settings to avoid security warnings
 if (CONFIG.nodeEnv === 'production') {
-    app.set('trust proxy', true);
+    // Trust only the first proxy for better security
+    app.set('trust proxy', 1);
+} else {
+    // Development environment - don't trust proxy
+    app.set('trust proxy', false);
 }
 
 // Validate configuration before starting

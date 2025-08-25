@@ -6,7 +6,7 @@ const slowDown = require('express-slow-down');
  * Implements tiered rate limits based on request type and user patterns
  */
 
-// General API rate limiter
+// General API rate limiter with secure trust proxy configuration
 const generalApiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // Limit each IP to 100 requests per windowMs
@@ -17,6 +17,8 @@ const generalApiLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
+    // Secure trust proxy configuration
+    trustProxy: process.env.NODE_ENV === 'production' ? 1 : false,
     handler: (req, res) => {
         console.warn(`Rate limit exceeded for IP: ${req.ip}, Path: ${req.path}`);
         res.status(429).json({
@@ -39,6 +41,8 @@ const subscriptionValidationLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
+    // Secure trust proxy configuration
+    trustProxy: process.env.NODE_ENV === 'production' ? 1 : false,
     keyGenerator: (req) => {
         // Use user ID if available, otherwise fall back to IP
         const userId = req.body?.userId || req.params?.userId || req.ip;
@@ -69,6 +73,8 @@ const authLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
+    // Secure trust proxy configuration
+    trustProxy: process.env.NODE_ENV === 'production' ? 1 : false,
     handler: (req, res) => {
         console.warn(`Auth rate limit exceeded for IP: ${req.ip}, Path: ${req.path}`);
         res.status(429).json({
@@ -83,10 +89,10 @@ const authLimiter = rateLimit({
 const speedLimiter = slowDown({
     windowMs: 15 * 60 * 1000, // 15 minutes
     delayAfter: 5, // Allow 5 requests per 15 minutes without delay
-    delayMs: 500, // Add 500ms delay per request after delayAfter
+    delayMs: () => 500, // Fixed 500ms delay per request after delayAfter (v3.0 format)
     maxDelayMs: 10000, // Maximum delay of 10 seconds
-    onLimitReached: (req, res) => {
-        console.warn(`Speed limit reached for IP: ${req.ip}, adding delays`);
+    validate: {
+        delayMs: false // Disable the delayMs deprecation warning
     }
 });
 
