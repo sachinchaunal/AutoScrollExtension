@@ -508,15 +508,15 @@ userSchema.methods.getPendingPaymentLink = function() {
  * Check if user has a subscription management link (for active subscriptions)
  */
 userSchema.methods.hasSubscriptionManagementLink = function() {
-    // Allow management for active subscriptions and subscriptions being processed
-    const isManageableStatus = ['active', 'authenticated'].includes(this.subscription.razorpay.status);
+    // Allow management for active subscriptions, processing subscriptions, and newly created subscriptions
+    const isManageableStatus = ['active', 'authenticated', 'created'].includes(this.subscription.razorpay.status);
     const hasSubscriptionLink = !!this.subscription.razorpay.subscriptionLink;
     
     return isManageableStatus && hasSubscriptionLink;
 };
 
 /**
- * Get subscription management link for active subscriptions or those being processed
+ * Get subscription management link for active subscriptions, processing subscriptions, or newly created subscriptions
  */
 userSchema.methods.getSubscriptionManagementLink = function() {
     if (this.hasSubscriptionManagementLink()) {
