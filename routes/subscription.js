@@ -253,13 +253,69 @@ router.post('/create-subscription', async (req, res) => {
             });
         }
         
-        // Check if user already has an active subscription
+        // Enhanced check for existing subscriptions (active, processing, or pending)
         const currentStatus = SubscriptionService.getUserSubscriptionStatus(user);
+        
+        // Check for active subscription
         if (currentStatus.subscriptionStatus === 'active') {
             return res.status(400).json({
                 success: false,
-                message: 'User already has an active subscription'
+                message: 'User already has an active subscription',
+                code: 'SUBSCRIPTION_ALREADY_ACTIVE'
             });
+        }
+        
+        // Check for subscription currently processing
+        if (currentStatus.isProcessing) {
+            return res.status(400).json({
+                success: false,
+                message: 'User already has a subscription being processed. Please wait for activation or contact support.',
+                code: 'SUBSCRIPTION_PROCESSING',
+                data: {
+                    isProcessing: true,
+                    processingState: currentStatus.processingState,
+                    processingMessage: currentStatus.processingMessage
+                }
+            });
+        }
+        
+        // Check for pending payment
+        if (user.hasPendingPaymentLink()) {
+            const pendingPayment = user.getPendingPaymentLink();
+            return res.status(400).json({
+                success: false,
+                message: 'User has an existing subscription with incomplete payment. Please complete the existing payment or contact support.',
+                code: 'PENDING_PAYMENT_EXISTS',
+                data: {
+                    hasPendingPayment: true,
+                    subscriptionId: pendingPayment.subscriptionId,
+                    paymentLink: pendingPayment.link,
+                    createdAt: pendingPayment.createdAt
+                }
+            });
+        }
+        
+        // Check for recent subscription creation (within last 10 minutes) to prevent accidental duplicates
+        if (user.subscription?.razorpay?.subscriptionId && user.subscription?.razorpay?.subscriptionLinkCreatedAt) {
+            const timeSinceCreation = Date.now() - new Date(user.subscription.razorpay.subscriptionLinkCreatedAt).getTime();
+            const tenMinutesInMs = 10 * 60 * 1000;
+            
+            if (timeSinceCreation < tenMinutesInMs && 
+                user.subscription.razorpay.status !== 'active' && 
+                user.subscription.razorpay.status !== 'cancelled') {
+                
+                return res.status(400).json({
+                    success: false,
+                    message: 'A subscription was recently created for this user. Please complete the existing subscription or wait 10 minutes before creating a new one.',
+                    code: 'RECENT_SUBSCRIPTION_EXISTS',
+                    data: {
+                        subscriptionId: user.subscription.razorpay.subscriptionId,
+                        status: user.subscription.razorpay.status,
+                        createdAt: user.subscription.razorpay.subscriptionLinkCreatedAt,
+                        subscriptionLink: user.subscription.razorpay.subscriptionLink
+                    }
+                });
+            }
         }
         
         // Create subscription using Razorpay Subscription API (follows images workflow)
