@@ -34,7 +34,7 @@ const SUBSCRIPTION_PLANS = {
         period: 'yearly',
         interval: 1,
         description: 'Yearly subscription for AutoScroll Premium features (Save 1 month)',
-        total_count: 1 // One billing cycle for yearly
+        total_count: 10 // Ten billing cycles for yearly (10 years of recurring billing)
     }
 };
 

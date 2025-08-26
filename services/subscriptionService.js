@@ -119,7 +119,7 @@ class SubscriptionService {
                 plan_id: plan.id,
                 customer_notify: 1, // Send notification to customer
                 quantity: 1,
-                total_count: planType === 'yearly' ? 1 : 12, // 1 billing cycle for yearly, 12 for monthly
+                total_count: planType === 'yearly' ? 10 : 12, // 10 billing cycles for yearly (10 years), 12 for monthly
                 // No start_at parameter for immediate start
                 addons: [],
                 notes: {
