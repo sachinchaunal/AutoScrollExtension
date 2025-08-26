@@ -159,6 +159,13 @@ const userSchema = new mongoose.Schema({
             cancelledAt: {
                 type: Date
             },
+            // Store subscription payment link for resume functionality
+            subscriptionLink: {
+                type: String
+            },
+            subscriptionLinkCreatedAt: {
+                type: Date
+            },
             paymentHistory: [{
                 paymentId: String,
                 amount: Number,
@@ -459,8 +466,69 @@ userSchema.methods.getSubscriptionSummary = function() {
         features: this.subscription.features,
         totalUsage: this.subscription.usage.totalAutoScrolls,
         canUpgrade: access.type === 'trial' || !access.hasAccess,
-        canCancel: this.subscription.razorpay.status === 'active' && !this.subscription.razorpay.cancelAtCycleEnd
+        canCancel: this.subscription.razorpay.status === 'active' && !this.subscription.razorpay.cancelAtCycleEnd,
+        // Add pending payment link info
+        hasPendingPayment: this.hasPendingPaymentLink(),
+        pendingPaymentLink: this.getPendingPaymentLink(),
+        // Add subscription management link info for active subscriptions
+        hasManagementLink: this.hasSubscriptionManagementLink(),
+        managementLink: this.getSubscriptionManagementLink()
     };
+};
+
+/**
+ * Check if user has a pending payment link that can be resumed
+ */
+userSchema.methods.hasPendingPaymentLink = function() {
+    // Only show pending payment if subscription is created/authenticated but not active
+    const isPendingStatus = ['created', 'authenticated'].includes(this.subscription.razorpay.status);
+    const hasSubscriptionLink = !!this.subscription.razorpay.subscriptionLink;
+    
+    // No expiration check - subscription links remain valid for payment method updates
+    return isPendingStatus && hasSubscriptionLink;
+};
+
+/**
+ * Get pending payment link if available
+ */
+userSchema.methods.getPendingPaymentLink = function() {
+    if (this.hasPendingPaymentLink()) {
+        return {
+            link: this.subscription.razorpay.subscriptionLink,
+            subscriptionId: this.subscription.razorpay.subscriptionId,
+            planId: this.subscription.razorpay.planId,
+            status: this.subscription.razorpay.status,
+            createdAt: this.subscription.razorpay.subscriptionLinkCreatedAt
+        };
+    }
+    return null;
+};
+
+/**
+ * Check if user has a subscription management link (for active subscriptions)
+ */
+userSchema.methods.hasSubscriptionManagementLink = function() {
+    const isActiveStatus = this.subscription.razorpay.status === 'active';
+    const hasSubscriptionLink = !!this.subscription.razorpay.subscriptionLink;
+    
+    return isActiveStatus && hasSubscriptionLink;
+};
+
+/**
+ * Get subscription management link for active subscriptions
+ */
+userSchema.methods.getSubscriptionManagementLink = function() {
+    if (this.hasSubscriptionManagementLink()) {
+        return {
+            link: this.subscription.razorpay.subscriptionLink,
+            subscriptionId: this.subscription.razorpay.subscriptionId,
+            planId: this.subscription.razorpay.planId,
+            status: this.subscription.razorpay.status,
+            createdAt: this.subscription.razorpay.subscriptionLinkCreatedAt,
+            purpose: 'payment_management' // Indicates this is for payment method updates
+        };
+    }
+    return null;
 };
 
 // Static Methods

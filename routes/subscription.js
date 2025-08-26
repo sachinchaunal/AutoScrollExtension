@@ -7,6 +7,66 @@ const { verifyWebhookSignature } = require('../config/razorpay');
 const { formatErrorResponse } = require('../services/errorHandling');
 
 /**
+ * Get pending payment link for user (Resume Payment functionality)
+ * GET /api/subscription/pending-payment/:userId
+ */
+router.get('/pending-payment/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+        
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        const pendingPayment = user.getPendingPaymentLink();
+        
+        if (pendingPayment) {
+            res.json({
+                success: true,
+                message: 'Pending payment found',
+                data: {
+                    hasPendingPayment: true,
+                    paymentLink: pendingPayment.link,
+                    subscriptionId: pendingPayment.subscriptionId,
+                    planId: pendingPayment.planId,
+                    status: pendingPayment.status,
+                    createdAt: pendingPayment.createdAt,
+                    // Determine plan type for UI display
+                    planType: pendingPayment.planId?.includes('yearly') || pendingPayment.planId?.includes('annual') ? 'yearly' : 'monthly'
+                }
+            });
+        } else {
+            res.json({
+                success: true,
+                message: 'No pending payment found',
+                data: {
+                    hasPendingPayment: false
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error('❌ Get pending payment error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to check pending payment',
+            error: error.message
+        });
+    }
+});
+
+/**
  * Get user subscription status
  * GET /api/subscription/status/:userId
  */
@@ -24,9 +84,17 @@ router.get('/status/:userId', async (req, res) => {
         
         const subscriptionStatus = SubscriptionService.getUserSubscriptionStatus(user);
         
+        // Enhanced response with pending payment information
+        const enhancedStatus = {
+            ...subscriptionStatus,
+            // Add pending payment info
+            hasPendingPayment: user.hasPendingPaymentLink(),
+            pendingPayment: user.getPendingPaymentLink()
+        };
+        
         res.json({
             success: true,
-            data: subscriptionStatus
+            data: enhancedStatus
         });
         
     } catch (error) {
@@ -205,6 +273,8 @@ router.post('/create-subscription', async (req, res) => {
         user.subscription.razorpay.subscriptionId = subscriptionResult.subscription.id;
         user.subscription.razorpay.planId = subscriptionResult.subscription.planId;
         user.subscription.razorpay.status = 'created'; // Razorpay initial status
+        user.subscription.razorpay.subscriptionLink = subscriptionResult.subscription.shortUrl; // Store the payment link
+        user.subscription.razorpay.subscriptionLinkCreatedAt = new Date(); // Store creation time
         await user.save();
         
         console.log(`✅ Subscription created for user: ${user.email}, Plan: ${planType}, Subscription ID: ${subscriptionResult.subscription.id}`);
